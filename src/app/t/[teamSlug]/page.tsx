@@ -5,6 +5,8 @@ import {
   getSubmissionCount,
   getRounds,
   getDefaultQuestionSet,
+  normalizeAvg,
+  normalizeSpread,
 } from "@/lib/queries";
 import { notFound } from "next/navigation";
 import DashboardClient from "./DashboardClient";
@@ -62,8 +64,11 @@ export default async function TeamDashboard({ params }: PageProps) {
       dataPoints: {
         round_id: string;
         round_created_at: string;
+        scale_max: number;
         avg: number;
+        normAvg: number;
         spread: number;
+        normSpread: number;
         count: number;
         values: number[];
       }[];
@@ -82,8 +87,11 @@ export default async function TeamDashboard({ params }: PageProps) {
     questionMap.get(agg.question_id)!.dataPoints.push({
       round_id: agg.round_id,
       round_created_at: agg.round_created_at,
+      scale_max: agg.scale_max,
       avg: agg.avg,
+      normAvg: normalizeAvg(agg.avg, agg.scale_max),
       spread: agg.spread,
+      normSpread: normalizeSpread(agg.spread, agg.scale_max),
       count: agg.count,
       values: agg.values,
     });
@@ -100,7 +108,7 @@ export default async function TeamDashboard({ params }: PageProps) {
 
   const questionCards = Array.from(questionMap.values());
 
-  // Compute "What changed?" — top increases and decreases
+  // Compute "What changed?" — use normalized deltas so 3→5 scale changes compare fairly
   const changes: {
     question_text: string;
     delta: number;
@@ -109,8 +117,8 @@ export default async function TeamDashboard({ params }: PageProps) {
 
   for (const q of questionCards) {
     if (q.dataPoints.length >= 2) {
-      const prev = q.dataPoints[q.dataPoints.length - 2].avg;
-      const curr = q.dataPoints[q.dataPoints.length - 1].avg;
+      const prev = q.dataPoints[q.dataPoints.length - 2].normAvg;
+      const curr = q.dataPoints[q.dataPoints.length - 1].normAvg;
       const delta = Math.round((curr - prev) * 100) / 100;
       if (delta !== 0) {
         changes.push({
@@ -138,7 +146,6 @@ export default async function TeamDashboard({ params }: PageProps) {
     <DashboardClient
       teamName={team.name}
       teamSlug={team.slug}
-      scaleMax={scaleMax}
       questionCards={questionCards}
       increases={increases}
       decreases={decreases}

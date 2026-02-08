@@ -6,13 +6,15 @@ import MixedSignals from "@/components/MixedSignals";
 import Card from "@/components/Card";
 import SectionHeading from "@/components/SectionHeading";
 import Badge from "@/components/Badge";
-import Button from "@/components/Button";
 
 type DataPoint = {
   round_id: string;
   round_created_at: string;
+  scale_max: number;
   avg: number;
+  normAvg: number;
   spread: number;
+  normSpread: number;
   count: number;
   values: number[];
 };
@@ -33,7 +35,6 @@ type Change = {
 type Props = {
   teamName: string;
   teamSlug: string;
-  scaleMax: number;
   questionCards: QuestionCard[];
   increases: Change[];
   decreases: Change[];
@@ -94,10 +95,16 @@ function DistributionBar({
   );
 }
 
+/** Check if a question's history spans multiple scales */
+function hasMixedScales(dataPoints: DataPoint[]): boolean {
+  if (dataPoints.length < 2) return false;
+  const first = dataPoints[0].scale_max;
+  return dataPoints.some((d) => d.scale_max !== first);
+}
+
 export default function DashboardClient({
   teamName,
   teamSlug,
-  scaleMax,
   questionCards,
   increases,
   decreases,
@@ -119,7 +126,7 @@ export default function DashboardClient({
     return (
       <div className="min-h-screen max-w-2xl mx-auto px-5 py-10">
         <header className="mb-10">
-          <Badge variant="brand">TX Temp</Badge>
+          <Badge variant="brand">TeamTemp</Badge>
           <h1 className="text-3xl mt-3">{teamName}</h1>
         </header>
         <Card className="p-10 text-center">
@@ -141,7 +148,7 @@ export default function DashboardClient({
   return (
     <div className="min-h-screen max-w-5xl mx-auto px-5 py-10">
       <header className="mb-10">
-        <Badge variant="brand">TX Temp</Badge>
+        <Badge variant="brand">TeamTemp</Badge>
         <h1 className="text-3xl mt-3">{teamName}</h1>
         {lastRoundId && (
           <a
@@ -166,7 +173,7 @@ export default function DashboardClient({
                 <span className="text-[0.9375rem] pt-0.5">
                   &ldquo;{c.question_text}&rdquo;{" "}
                   <span className="text-muted">
-                    moved up (+{c.delta.toFixed(2)})
+                    moved up (+{(c.delta * 100).toFixed(0)}%)
                   </span>
                 </span>
               </div>
@@ -179,7 +186,7 @@ export default function DashboardClient({
                 <span className="text-[0.9375rem] pt-0.5">
                   &ldquo;{c.question_text}&rdquo;{" "}
                   <span className="text-muted">
-                    moved down ({c.delta.toFixed(2)})
+                    moved down ({(c.delta * 100).toFixed(0)}%)
                   </span>
                 </span>
               </div>
@@ -199,10 +206,14 @@ export default function DashboardClient({
             q.dataPoints.length >= 2
               ? q.dataPoints[q.dataPoints.length - 2]
               : null;
-          const delta = prev
-            ? Math.round((latest.avg - prev.avg) * 100) / 100
+
+          // Delta uses normalized values so cross-scale comparisons are fair
+          const normDelta = prev
+            ? Math.round((latest.normAvg - prev.normAvg) * 100) / 100
             : null;
+
           const isExpanded = expandedCards.has(q.question_id);
+          const mixed = hasMixedScales(q.dataPoints);
 
           return (
             <Card
@@ -221,36 +232,49 @@ export default function DashboardClient({
                   )}
                 </div>
                 <MixedSignals
-                  spread={latest.spread}
-                  scaleMax={scaleMax}
+                  spread={latest.normSpread}
                 />
               </div>
               <div className="flex items-center gap-5">
                 <Sparkline
-                  values={q.dataPoints.map((d) => d.avg)}
-                  scaleMax={scaleMax}
+                  values={q.dataPoints.map((d) => d.normAvg)}
+                  scaleChangeIndices={
+                    mixed
+                      ? q.dataPoints.reduce<number[]>((acc, d, i) => {
+                          if (i > 0 && d.scale_max !== q.dataPoints[i - 1].scale_max) acc.push(i);
+                          return acc;
+                        }, [])
+                      : undefined
+                  }
                 />
                 <div>
                   <span className="text-2xl font-bold">
                     {latest.avg.toFixed(1)}
                   </span>
-                  <span className="text-muted text-[0.875rem]">/{scaleMax}</span>
-                  {delta !== null && delta !== 0 && (
+                  <span className="text-muted text-[0.875rem]">/{latest.scale_max}</span>
+                  {normDelta !== null && normDelta !== 0 && (
                     <span
                       className={`ml-2 text-[0.875rem] font-semibold ${
-                        delta > 0 ? "text-up" : "text-alert"
+                        normDelta > 0 ? "text-up" : "text-alert"
                       }`}
                     >
-                      {delta > 0 ? "+" : ""}
-                      {delta.toFixed(2)}
+                      {normDelta > 0 ? "+" : ""}
+                      {(normDelta * 100).toFixed(0)}%
                     </span>
                   )}
                 </div>
               </div>
               <div className="flex items-center justify-between mt-3">
-                <p className="text-[0.8125rem] text-muted">
-                  {latest.count} responses · last round
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[0.8125rem] text-muted">
+                    {latest.count} responses · last round
+                  </p>
+                  {mixed && (
+                    <span className="text-[0.6875rem] text-muted bg-surface-2 rounded-full px-2 py-0.5" title="Scale changed during history — trend is normalized for fair comparison">
+                      Scale changed
+                    </span>
+                  )}
+                </div>
                 <button
                   onClick={() => toggleCard(q.question_id)}
                   className="text-[0.8125rem] text-brand hover:underline cursor-pointer"
@@ -259,7 +283,7 @@ export default function DashboardClient({
                 </button>
               </div>
               {isExpanded && (
-                <DistributionBar values={latest.values} scaleMax={scaleMax} />
+                <DistributionBar values={latest.values} scaleMax={latest.scale_max} />
               )}
             </Card>
           );

@@ -72,27 +72,46 @@ for (let ri = 0; ri <= NUM_CLOSED; ri++) {
   rqByRound[roundId].push(rqItem);
 }
 
+// ─── Scale per round ────────────────────────────────────────────────
+// First 8 rounds use 3-point scale, last 2 closed + open use 5-point
+// This lets us test mixed-scale normalization on the dashboard
+function scaleForRound(ri) {
+  return ri >= 8 ? 5 : 3;
+}
+
 // ─── Value generation with realistic trends ─────────────────────────
 // Base averages for each fixed question, drifting over rounds
-// Scale is 1-3
+// Trend targets are expressed on a 0–1 normalized range, then mapped to actual scale
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-function pickVal(avg) {
-  // Probabilistically pick 1, 2, or 3 based on target avg
+function pickVal(avg, scaleMax) {
+  // Probabilistically pick 1..scaleMax based on target avg
+  // Map avg to a 0–1 position within the scale
+  const pos = (avg - 1) / (scaleMax - 1); // 0 = lowest, 1 = highest
   const r = Math.random();
-  if (avg <= 1.5) return r < 0.6 ? 1 : r < 0.9 ? 2 : 3;
-  if (avg >= 2.5) return r < 0.6 ? 3 : r < 0.9 ? 2 : 1;
-  return r < 0.15 ? 1 : r < 0.85 ? 2 : 3;
+  if (scaleMax === 3) {
+    if (pos <= 0.25) return r < 0.6 ? 1 : r < 0.9 ? 2 : 3;
+    if (pos >= 0.75) return r < 0.6 ? 3 : r < 0.9 ? 2 : 1;
+    return r < 0.15 ? 1 : r < 0.85 ? 2 : 3;
+  }
+  // For 5-point: distribute around the target
+  const target = Math.round(avg);
+  const spread = Math.random();
+  if (spread < 0.5) return clamp(target, 1, scaleMax);
+  if (spread < 0.75) return clamp(target + 1, 1, scaleMax);
+  if (spread < 0.9) return clamp(target - 1, 1, scaleMax);
+  return clamp(target + (Math.random() < 0.5 ? 2 : -2), 1, scaleMax);
 }
 
 // Trends per fixed question across 11 rounds (index 0..10)
+// Expressed as normalized 0–1 values, mapped to actual scale per round.
 // workload: starts okay, dips mid, recovers
-const workloadTrend =  [2.0, 2.1, 1.8, 1.6, 1.5, 1.7, 1.9, 2.2, 2.4, 2.3, 2.5];
+const workloadTrend =  [0.50, 0.55, 0.40, 0.30, 0.25, 0.35, 0.45, 0.60, 0.70, 0.65, 0.75];
 // focus: slowly improving
-const focusTrend =     [1.8, 1.9, 2.0, 2.0, 2.1, 2.2, 2.3, 2.4, 2.3, 2.5, 2.6];
+const focusTrend =     [0.40, 0.45, 0.50, 0.50, 0.55, 0.60, 0.65, 0.70, 0.65, 0.75, 0.80];
 // clarity: drops hard mid, then recovers
-const clarityTrend =   [2.5, 2.3, 2.0, 1.6, 1.4, 1.5, 1.8, 2.0, 2.2, 2.4, 2.5];
+const clarityTrend =   [0.75, 0.65, 0.50, 0.30, 0.20, 0.25, 0.40, 0.50, 0.60, 0.70, 0.75];
 // purpose: consistently good
-const purposeTrend =   [2.6, 2.7, 2.5, 2.4, 2.6, 2.7, 2.8, 2.7, 2.6, 2.8, 2.9];
+const purposeTrend =   [0.80, 0.85, 0.75, 0.70, 0.80, 0.85, 0.90, 0.85, 0.80, 0.90, 0.95];
 
 const trendMap = {
   [q1Id]: workloadTrend,
@@ -101,12 +120,13 @@ const trendMap = {
   [q4Id]: purposeTrend,
 };
 
-// Rotating questions get moderate averages with some spread
-const rotatingAvg = 2.0;
+// Rotating questions get moderate normalized avg (~0.5)
+const rotatingNormAvg = 0.50;
 
 function makeSubmissions(roundId, roundRqs, count, roundIdx) {
   const subs = [];
   const answers = [];
+  const scaleMax = scaleForRound(roundIdx);
 
   for (let i = 0; i < count; i++) {
     const subId = uid();
@@ -119,12 +139,14 @@ function makeSubmissions(roundId, roundRqs, count, roundIdx) {
 
     for (const rqItem of roundRqs) {
       const trend = trendMap[rqItem.question_id];
-      const targetAvg = trend ? trend[roundIdx] : rotatingAvg + (Math.random() - 0.5) * 0.6;
+      // trend values are normalized 0–1; map to actual scale: 1 + norm * (scaleMax - 1)
+      const normTarget = trend ? trend[roundIdx] : rotatingNormAvg + (Math.random() - 0.5) * 0.3;
+      const targetAvg = 1 + normTarget * (scaleMax - 1);
       answers.push({
         id: uid(),
         submission_id: subId,
         round_question_id: rqItem.id,
-        value: clamp(pickVal(targetAvg), 1, 3),
+        value: clamp(pickVal(targetAvg, scaleMax), 1, scaleMax),
       });
     }
   }
@@ -186,18 +208,20 @@ for (let ri = 0; ri < NUM_CLOSED; ri++) {
     question_set_id: qSetId,
     token: roundTokens[ri],
     status: "closed",
+    scale_max: scaleForRound(ri),
     opens_at: daysAgo(ago),
     closes_at: daysAgo(ago - 2),
     created_at: daysAgo(ago),
   });
 }
-// Open round
+// Open round (uses current scale = 5, since it's round index 10)
 rounds.push({
   id: roundIds[NUM_CLOSED],
   team_id: teamId,
   question_set_id: qSetId,
   token: roundTokens[NUM_CLOSED],
   status: "open",
+  scale_max: scaleForRound(NUM_CLOSED),
   opens_at: daysAgo(1),
   closes_at: null,
   created_at: daysAgo(1),
@@ -217,7 +241,7 @@ const db = {
     {
       team_id: teamId,
       cadence: "biweekly",
-      scale_max: 3,
+      scale_max: 5,
       min_responses_to_show: 4,
       allow_free_text: true,
     },
