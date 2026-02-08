@@ -6,6 +6,7 @@ import {
   addQuestionToSet,
   removeQuestionFromSet,
   deactivateQuestion,
+  moveQuestionInSet,
 } from "@/lib/queries";
 
 export async function POST(request: NextRequest) {
@@ -41,6 +42,30 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, question });
+}
+
+export async function PATCH(request: NextRequest) {
+  const { adminToken, questionSetItemId, newKind } = (await request.json()) as {
+    adminToken: string;
+    questionSetItemId: string;
+    newKind: "fixed" | "rotating_pool";
+  };
+
+  if (!adminToken || !questionSetItemId || !newKind) {
+    return NextResponse.json({ error: "Missing data" }, { status: 400 });
+  }
+
+  const team = await getTeamByAdminToken(adminToken);
+  if (!team) {
+    return NextResponse.json({ error: "Invalid token" }, { status: 403 });
+  }
+
+  const ok = await moveQuestionInSet(questionSetItemId, newKind);
+  if (!ok) {
+    return NextResponse.json({ error: "Item not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(request: NextRequest) {

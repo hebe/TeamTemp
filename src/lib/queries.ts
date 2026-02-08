@@ -114,6 +114,15 @@ export async function removeQuestionFromSet(itemId: string) {
   return true;
 }
 
+export async function moveQuestionInSet(itemId: string, newKind: "fixed" | "rotating_pool") {
+  const db = readDB();
+  const item = db.question_set_item.find((i) => i.id === itemId);
+  if (!item) return false;
+  item.kind = newKind;
+  writeDB(db);
+  return true;
+}
+
 export async function deactivateQuestion(questionId: string) {
   const db = readDB();
   const q = db.question_bank.find((q) => q.id === questionId);
@@ -393,4 +402,31 @@ export async function getFreeTexts(roundId: string) {
   return db.free_text
     .filter((ft) => subIds.has(ft.submission_id))
     .map((ft) => ({ text: ft.text, created_at: ft.created_at }));
+}
+
+export async function getAllFreeTexts(teamId: string) {
+  const db = readDB();
+  const teamRounds = db.rounds
+    .filter((r) => r.team_id === teamId && r.status === "closed")
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+  const results: { text: string; created_at: string; round_date: string }[] = [];
+
+  for (const round of teamRounds) {
+    const subIds = new Set(
+      db.submissions.filter((s) => s.round_id === round.id).map((s) => s.id)
+    );
+    const texts = db.free_text.filter((ft) => subIds.has(ft.submission_id));
+    for (const ft of texts) {
+      results.push({
+        text: ft.text,
+        created_at: ft.created_at,
+        round_date: round.created_at,
+      });
+    }
+  }
+
+  // Sort latest first
+  results.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return results;
 }

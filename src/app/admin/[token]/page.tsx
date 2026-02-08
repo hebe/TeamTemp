@@ -64,6 +64,12 @@ type AnalyticsData = {
   questions: QuestionAnalytics[];
 };
 
+type Comment = {
+  text: string;
+  created_at: string;
+  round_date: string;
+};
+
 const SCALE_LABELS: Record<number, string[]> = {
   3: ["Disagree", "Partly", "Agree"],
   4: ["Disagree", "Smw. disagree", "Smw. agree", "Agree"],
@@ -186,6 +192,8 @@ export default function AdminPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [expandedRounds, setExpandedRounds] = useState<Set<string>>(new Set());
+  const [comments, setComments] = useState<Comment[] | null>(null);
+  const [showAllComments, setShowAllComments] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -214,7 +222,17 @@ export default function AdminPage() {
     } catch { /* silently handle */ }
   }, [adminToken]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadComments = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/comments?adminToken=${encodeURIComponent(adminToken)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setComments(data.comments);
+      }
+    } catch { /* silently handle */ }
+  }, [adminToken]);
+
+  useEffect(() => { load(); loadComments(); }, [load, loadComments]);
 
   useEffect(() => {
     if (showAnalytics && !analytics) {
@@ -278,6 +296,18 @@ export default function AdminPage() {
     });
     flash("Question removed.");
     load();
+  };
+
+  const handleMoveQuestion = async (itemId: string, newKind: "fixed" | "rotating_pool") => {
+    const res = await fetch("/api/admin/questions", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adminToken, questionSetItemId: itemId, newKind }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      flash(`Question moved to ${newKind === "fixed" ? "fixed" : "rotating pool"}.`);
+      load();
+    }
   };
 
   if (loading) {
@@ -450,6 +480,44 @@ export default function AdminPage() {
         )}
       </Card>
 
+      {/* ── Comments (full width) ─────────────────────────────── */}
+      {comments && comments.length > 0 && (
+        <Card className="p-6 mb-5">
+          <SectionHeading
+            title="Comments"
+            subtitle={`${comments.length} comment${comments.length !== 1 ? "s" : ""} across all rounds.`}
+          >
+            {comments.length > 2 && (
+              <Button
+                size="sm"
+                variant={showAllComments ? "dark" : "outline"}
+                onClick={() => setShowAllComments(!showAllComments)}
+              >
+                {showAllComments ? "Show less" : `Show all (${comments.length})`}
+              </Button>
+            )}
+          </SectionHeading>
+
+          <div className={`space-y-3 ${showAllComments && comments.length > 5 ? "max-h-[24rem] overflow-y-auto pr-1" : ""}`}>
+            {(showAllComments ? comments : comments.slice(0, 2)).map((c, i) => (
+              <div
+                key={i}
+                className="bg-surface-2 rounded-[var(--radius-sm)] px-4 py-3"
+              >
+                <p className="text-[0.9375rem] leading-relaxed">{c.text}</p>
+                <p className="text-[0.75rem] text-muted mt-1.5">
+                  {new Date(c.round_date).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* ── Fixed + Rotating side by side ──────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
         {/* ── Fixed Questions ──────────────────────────────────── */}
@@ -464,14 +532,23 @@ export default function AdminPage() {
                 key={item.id}
                 className="flex items-center justify-between bg-surface-2 rounded-[var(--radius-sm)] px-4 py-3"
               >
-                <span className="text-[0.9375rem]">{item.question?.text}</span>
-                <Button
-                  variant="alert"
-                  size="sm"
-                  onClick={() => handleRemoveQuestion(item.id, item.question_id)}
-                >
-                  Remove
-                </Button>
+                <span className="text-[0.9375rem] flex-1 mr-3">{item.question?.text}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleMoveQuestion(item.id, "rotating_pool")}
+                  >
+                    → Rotating
+                  </Button>
+                  <Button
+                    variant="alert"
+                    size="sm"
+                    onClick={() => handleRemoveQuestion(item.id, item.question_id)}
+                  >
+                    Remove
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -489,14 +566,23 @@ export default function AdminPage() {
                 key={item.id}
                 className="flex items-center justify-between bg-surface-2 rounded-[var(--radius-sm)] px-4 py-3"
               >
-                <span className="text-[0.9375rem]">{item.question?.text}</span>
-                <Button
-                  variant="alert"
-                  size="sm"
-                  onClick={() => handleRemoveQuestion(item.id, item.question_id)}
-                >
-                  Remove
-                </Button>
+                <span className="text-[0.9375rem] flex-1 mr-3">{item.question?.text}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleMoveQuestion(item.id, "fixed")}
+                  >
+                    → Fixed
+                  </Button>
+                  <Button
+                    variant="alert"
+                    size="sm"
+                    onClick={() => handleRemoveQuestion(item.id, item.question_id)}
+                  >
+                    Remove
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
