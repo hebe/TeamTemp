@@ -16,7 +16,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TX Temp",
+  title: "TeamTemp",
   description: "A quick, anonymous temperature check for your team.",
 };
 
