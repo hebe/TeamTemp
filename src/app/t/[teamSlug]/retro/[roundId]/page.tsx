@@ -9,6 +9,7 @@ import {
   normalizeAvg,
   normalizeSpread,
 } from "@/lib/queries";
+import { getCheckInQuestion } from "@/lib/check-in-questions";
 import { notFound } from "next/navigation";
 import Card from "@/components/Card";
 import SectionHeading from "@/components/SectionHeading";
@@ -34,6 +35,8 @@ export default async function RetroPage({ params }: PageProps) {
 
   const count = await getSubmissionCount(roundId);
 
+  const checkInQuestion = getCheckInQuestion(roundId);
+
   if (count < minResponses) {
     return (
       <div className="min-h-screen max-w-2xl mx-auto px-5 py-10">
@@ -41,6 +44,23 @@ export default async function RetroPage({ params }: PageProps) {
           <Badge variant="brand">TeamTemp — Retro</Badge>
           <h1 className="text-3xl mt-3">{team.name}</h1>
         </header>
+
+        {/* ── Check-in warm-up ─────────────────────────────────── */}
+        <Card className="p-6 mb-5 border-2 border-warm/20">
+          <div className="flex items-start gap-3">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-warm-light text-warm text-[1rem] shrink-0 mt-0.5">
+              💬
+            </span>
+            <div>
+              <Badge variant="warm" className="mb-2">Check-in</Badge>
+              <p className="text-lg font-medium">{checkInQuestion}</p>
+              <p className="text-[0.8125rem] text-muted mt-2">
+                A quick warm-up before diving into the data. Go around the table and let everyone share.
+              </p>
+            </div>
+          </div>
+        </Card>
+
         <Card className="p-10 text-center">
           <h2 className="text-xl mb-2">Not enough responses yet.</h2>
           <p className="text-muted">
@@ -208,6 +228,22 @@ export default async function RetroPage({ params }: PageProps) {
           · {count} responses
         </p>
       </header>
+
+      {/* ── Check-in warm-up ─────────────────────────────────── */}
+      <Card className="p-6 mb-5 border-2 border-warm/20">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-warm-light text-warm text-[1rem] shrink-0 mt-0.5">
+            💬
+          </span>
+          <div>
+            <Badge variant="warm" className="mb-2">Check-in</Badge>
+            <p className="text-lg font-medium">{checkInQuestion}</p>
+            <p className="text-[0.8125rem] text-muted mt-2">
+              A quick warm-up before diving into the data. Go around the table and let everyone share.
+            </p>
+          </div>
+        </div>
+      </Card>
 
       {/* ── This round's scores (full width, top) ──────────────── */}
       <Card className="p-6 mb-5">
