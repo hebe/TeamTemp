@@ -20,6 +20,7 @@ type DataPoint = {
 type QuestionCard = {
   question_id: string;
   question_text: string;
+  isRotating: boolean;
   dataPoints: DataPoint[];
 };
 
@@ -180,8 +181,11 @@ export default function DashboardClient({
       )}
 
       {/* ── Question Cards (responsive grid) ─────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
-        {questionCards.map((q) => {
+      {(() => {
+        const fixedCards = questionCards.filter((q) => !q.isRotating);
+        const rotatingCards = questionCards.filter((q) => q.isRotating);
+
+        const renderCard = (q: QuestionCard) => {
           const latest = q.dataPoints[q.dataPoints.length - 1];
           const prev =
             q.dataPoints.length >= 2
@@ -193,11 +197,21 @@ export default function DashboardClient({
           const isExpanded = expandedCards.has(q.question_id);
 
           return (
-            <Card key={q.question_id} className="p-5">
+            <Card
+              key={q.question_id}
+              className={`p-5 ${q.isRotating ? "border-dashed border-border/70" : ""}`}
+            >
               <div className="flex items-start justify-between gap-4 mb-4">
-                <p className="font-medium leading-snug">
-                  {q.question_text}
-                </p>
+                <div className="flex items-start gap-2 flex-1">
+                  <p className="font-medium leading-snug">
+                    {q.question_text}
+                  </p>
+                  {q.isRotating && (
+                    <span className="text-[0.6875rem] text-muted bg-surface-2 rounded-full px-2 py-0.5 shrink-0 mt-0.5">
+                      Asked {q.dataPoints.length} {q.dataPoints.length === 1 ? "time" : "times"}
+                    </span>
+                  )}
+                </div>
                 <MixedSignals
                   spread={latest.spread}
                   scaleMax={scaleMax}
@@ -241,8 +255,31 @@ export default function DashboardClient({
               )}
             </Card>
           );
-        })}
-      </div>
+        };
+
+        return (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              {fixedCards.map(renderCard)}
+            </div>
+            {rotatingCards.length > 0 && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-[0.75rem] text-muted font-medium uppercase tracking-wider">
+                    From the rotating pool
+                  </span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+                  {rotatingCards.map(renderCard)}
+                </div>
+              </>
+            )}
+            {rotatingCards.length === 0 && <div className="mb-10" />}
+          </>
+        );
+      })()}
 
       {/* ── Retro Link ────────────────────────────────────────── */}
       {lastRoundId && (

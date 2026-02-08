@@ -4,6 +4,7 @@ import {
   getDashboardData,
   getSubmissionCount,
   getRounds,
+  getDefaultQuestionSet,
 } from "@/lib/queries";
 import { notFound } from "next/navigation";
 import DashboardClient from "./DashboardClient";
@@ -26,6 +27,12 @@ export default async function TeamDashboard({ params }: PageProps) {
 
   const allAggregates = await getDashboardData(team.id, 8);
   const rounds = await getRounds(team.id);
+  const qSet = await getDefaultQuestionSet(team.id);
+  const rotatingQuestionIds = new Set(
+    (qSet?.items ?? [])
+      .filter((i) => i.kind === "rotating_pool")
+      .map((i) => i.question_id)
+  );
   const closedRounds = rounds.filter((r) => r.status === "closed");
 
   // Check submission counts per round
@@ -51,6 +58,7 @@ export default async function TeamDashboard({ params }: PageProps) {
     {
       question_id: string;
       question_text: string;
+      isRotating: boolean;
       dataPoints: {
         round_id: string;
         round_created_at: string;
@@ -67,6 +75,7 @@ export default async function TeamDashboard({ params }: PageProps) {
       questionMap.set(agg.question_id, {
         question_id: agg.question_id,
         question_text: agg.question_text,
+        isRotating: rotatingQuestionIds.has(agg.question_id),
         dataPoints: [],
       });
     }
