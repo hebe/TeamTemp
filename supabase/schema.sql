@@ -1,4 +1,4 @@
--- TX Temp — database schema
+-- TeamTemp — database schema
 -- Run this in your Supabase SQL Editor to set up all tables.
 
 -- Enable pgcrypto for gen_random_uuid()
@@ -10,6 +10,7 @@ create table teams (
   name        text not null,
   slug        text not null unique,
   admin_token text not null unique default encode(gen_random_bytes(16), 'hex'),
+  admin_email text not null default '',
   created_at  timestamptz not null default now()
 );
 
@@ -17,7 +18,7 @@ create table teams (
 create table team_settings (
   team_id              uuid primary key references teams(id) on delete cascade,
   cadence              text not null default 'biweekly' check (cadence in ('weekly','biweekly','monthly')),
-  scale_max            int not null default 3 check (scale_max in (3, 4)),
+  scale_max            int not null default 3 check (scale_max in (3, 4, 5)),
   min_responses_to_show int not null default 4,
   allow_free_text      boolean not null default true
 );
@@ -36,7 +37,6 @@ create table question_bank (
 create table question_set (
   id         uuid primary key default gen_random_uuid(),
   team_id    uuid not null references teams(id) on delete cascade,
-  name       text not null,
   is_default boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -56,6 +56,7 @@ create table rounds (
   question_set_id uuid references question_set(id) on delete set null,
   token           text not null unique default encode(gen_random_bytes(12), 'hex'),
   status          text not null default 'open' check (status in ('open','closed')),
+  scale_max       int not null default 3 check (scale_max in (3, 4, 5)),
   opens_at        timestamptz not null default now(),
   closes_at       timestamptz,
   created_at      timestamptz not null default now()
