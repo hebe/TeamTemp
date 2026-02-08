@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 type LinkItem = { href: string; label: string };
 
 const DEMO_ADMIN_TOKEN = "demo-admin-token-abc123";
-const DEMO_SLUG = "tx";
+const DEMO_SLUG = "example";
 const SUPER_TOKEN = "dev-super-token";
 
 export default function DevNav() {

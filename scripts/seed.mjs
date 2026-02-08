@@ -25,13 +25,6 @@ function daysAgo(n) {
 const teamId = uid();
 const qSetId = uid();
 
-// Second test team (minimal — no rounds/submissions)
-const team2Id = uid();
-const qSet2Id = uid();
-const t2q1Id = uid(), t2q2Id = uid(), t2q3Id = uid(), t2q4Id = uid();
-const t2q5Id = uid(), t2q6Id = uid(), t2q7Id = uid(), t2q8Id = uid();
-const t2q9Id = uid(), t2q10Id = uid();
-
 // Fixed questions
 const q1Id = uid(); // Workload
 const q2Id = uid(); // Focus time
@@ -238,19 +231,11 @@ const db = {
   teams: [
     {
       id: teamId,
-      name: "Texty Beasts",
-      slug: "tx",
+      name: "Example Team",
+      slug: "example",
       admin_token: "demo-admin-token-abc123",
       admin_email: "hebedesign@gmail.com",
       created_at: daysAgo(200),
-    },
-    {
-      id: team2Id,
-      name: "Test Runners",
-      slug: "test-runners",
-      admin_token: "demo-admin-token-test456",
-      admin_email: "hebedesign+testing@gmail.com",
-      created_at: daysAgo(100),
     },
   ],
   team_settings: [
@@ -259,13 +244,6 @@ const db = {
       cadence: "biweekly",
       scale_max: 5,
       min_responses_to_show: 4,
-      allow_free_text: true,
-    },
-    {
-      team_id: team2Id,
-      cadence: "weekly",
-      scale_max: 5,
-      min_responses_to_show: 3,
       allow_free_text: true,
     },
   ],
@@ -280,21 +258,9 @@ const db = {
     { id: q8Id, team_id: teamId, text: "Meetings feel worthwhile.", category: "meetings", is_active: true, created_at: daysAgo(196) },
     { id: q9Id, team_id: teamId, text: "I get useful feedback on my work.", category: "feedback", is_active: true, created_at: daysAgo(195) },
     { id: q10Id, team_id: teamId, text: "I have enough energy at the end of the week.", category: "energy", is_active: true, created_at: daysAgo(194) },
-    // Team 2 questions (same texts, different team)
-    { id: t2q1Id, team_id: team2Id, text: "Workload feels sustainable.", category: "workload", is_active: true, created_at: daysAgo(100) },
-    { id: t2q2Id, team_id: team2Id, text: "I get enough focus time to do good work.", category: "focus", is_active: true, created_at: daysAgo(100) },
-    { id: t2q3Id, team_id: team2Id, text: "It's clear what matters most right now.", category: "clarity", is_active: true, created_at: daysAgo(100) },
-    { id: t2q4Id, team_id: team2Id, text: "I understand why we're doing what we're doing.", category: "purpose", is_active: true, created_at: daysAgo(100) },
-    { id: t2q5Id, team_id: team2Id, text: "I feel comfortable raising concerns in this team.", category: "safety", is_active: true, created_at: daysAgo(99) },
-    { id: t2q6Id, team_id: team2Id, text: "Decisions are made at a reasonable pace.", category: "pace", is_active: true, created_at: daysAgo(98) },
-    { id: t2q7Id, team_id: team2Id, text: "I know who to ask when I'm stuck.", category: "collaboration", is_active: true, created_at: daysAgo(97) },
-    { id: t2q8Id, team_id: team2Id, text: "Meetings feel worthwhile.", category: "meetings", is_active: true, created_at: daysAgo(96) },
-    { id: t2q9Id, team_id: team2Id, text: "I get useful feedback on my work.", category: "feedback", is_active: true, created_at: daysAgo(95) },
-    { id: t2q10Id, team_id: team2Id, text: "I have enough energy at the end of the week.", category: "energy", is_active: true, created_at: daysAgo(94) },
   ],
   question_set: [
     { id: qSetId, team_id: teamId, is_default: true },
-    { id: qSet2Id, team_id: team2Id, is_default: true },
   ],
   question_set_item: [
     { id: uid(), question_set_id: qSetId, question_id: q1Id, position: 1, kind: "fixed" },
@@ -307,17 +273,6 @@ const db = {
     { id: uid(), question_set_id: qSetId, question_id: q8Id, position: 8, kind: "rotating_pool" },
     { id: uid(), question_set_id: qSetId, question_id: q9Id, position: 9, kind: "rotating_pool" },
     { id: uid(), question_set_id: qSetId, question_id: q10Id, position: 10, kind: "rotating_pool" },
-    // Team 2 question set items
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q1Id, position: 1, kind: "fixed" },
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q2Id, position: 2, kind: "fixed" },
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q3Id, position: 3, kind: "fixed" },
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q4Id, position: 4, kind: "fixed" },
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q5Id, position: 5, kind: "rotating_pool" },
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q6Id, position: 6, kind: "rotating_pool" },
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q7Id, position: 7, kind: "rotating_pool" },
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q8Id, position: 8, kind: "rotating_pool" },
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q9Id, position: 9, kind: "rotating_pool" },
-    { id: uid(), question_set_id: qSet2Id, question_id: t2q10Id, position: 10, kind: "rotating_pool" },
   ],
   rounds,
   round_questions: allRoundQuestions,
@@ -339,9 +294,3 @@ console.log(`    Dashboard: /t/${db.teams[0].slug}`);
 console.log(`    Open round: /r/${roundTokens[NUM_CLOSED]}`);
 console.log(`    ${db.rounds.length} rounds (${db.rounds.filter(r => r.status === "closed").length} closed, ${db.rounds.filter(r => r.status === "open").length} open)`);
 console.log(`    ${db.submissions.length} submissions, ${db.answers.length} answers, ${db.free_text.length} free texts`);
-console.log("");
-console.log(`  Team 2: ${db.teams[1].name} (slug: ${db.teams[1].slug})`);
-console.log(`    Admin: /admin/${db.teams[1].admin_token}`);
-console.log(`    Email: ${db.teams[1].admin_email}`);
-console.log(`    Dashboard: /t/${db.teams[1].slug}`);
-console.log(`    (no rounds — fresh team)`);

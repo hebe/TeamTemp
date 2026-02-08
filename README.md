@@ -1,4 +1,4 @@
-# TX Temp
+# TeamTemp
 
 A quick, anonymous temperature check for your team. No tracking, no judgments — just honest signals.
 
@@ -15,7 +15,7 @@ A quick, anonymous temperature check for your team. No tracking, no judgments �
 
 1. In your Supabase dashboard, go to **SQL Editor**.
 2. Paste the contents of `supabase/schema.sql` and run it. This creates all the tables.
-3. Then paste the contents of `supabase/seed.sql` and run it. This creates a demo team called "Texty Beasts" with sample data.
+3. Then paste the contents of `supabase/seed.sql` and run it. This creates a demo team called "Example Team" with sample data.
 
 ### 3. Configure environment variables
 
@@ -41,17 +41,17 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Demo walkthrough
 
-After running the seed script, you have a team "Texty Beasts" with:
+After running the seed script, you have a team "Example Team" with:
 
 - **Admin page:** [/admin/demo-admin-token-abc123](http://localhost:3000/admin/demo-admin-token-abc123)
-- **Dashboard:** [/t/tx](http://localhost:3000/t/tx)
+- **Dashboard:** [/t/example](http://localhost:3000/t/example)
 - **Open round (respond):** [/r/demo-round-4](http://localhost:3000/r/demo-round-4)
 
 ### How to verify each feature
 
 #### Schema + seed
 - [ ] Tables appear in Supabase Table Editor
-- [ ] `teams` has one row ("Texty Beasts")
+- [ ] `teams` has one row ("Example Team")
 - [ ] `question_bank` has 10 questions (4 fixed + 6 rotating)
 - [ ] `rounds` has 4 rows (3 closed, 1 open)
 
@@ -70,7 +70,7 @@ After running the seed script, you have a team "Texty Beasts" with:
 - [ ] Going back to the same link still works (no duplicate prevention yet)
 
 #### Dashboard — aggregates
-- [ ] Go to `/t/tx`
+- [ ] Go to `/t/example`
 - [ ] See cards for each fixed question with sparklines
 - [ ] See "What seems different since last time?" section
 - [ ] "Mixed signals" badge appears where spread is high

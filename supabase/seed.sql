@@ -1,13 +1,13 @@
--- TX Temp — seed data
--- Creates demo team "Texty Beasts" with questions and sample rounds.
+-- TeamTemp — seed data
+-- Creates demo team "Example Team" with questions and sample rounds.
 -- Run this AFTER schema.sql in the Supabase SQL Editor.
 
 -- ─── Create Team ─────────────────────────────────────────────────────
 insert into teams (id, name, slug, admin_token)
 values (
   '11111111-1111-1111-1111-111111111111',
-  'Texty Beasts',
-  'tx',
+  'Example Team',
+  'example',
   'demo-admin-token-abc123'
 );
 
