@@ -1,26 +1,113 @@
 @import "tailwindcss";
 
+/* ─── Design Tokens ─────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg:        #FBFBF7;
+  --surface:   #FFFFFF;
+  --surface-2: #F3F6FA;
+  --border:    rgba(15, 23, 42, 0.10);
+  --ink:       #0F172A;
+  --muted:     rgba(15, 23, 42, 0.52);
+
+  --brand:     #00A7A7;
+  --brand-light: rgba(0, 167, 167, 0.10);
+  --cool:      #3B82F6;
+  --cool-light: rgba(59, 130, 246, 0.10);
+  --warm:      #F97316;
+  --warm-light: rgba(249, 115, 22, 0.10);
+  --alert:     #EF4444;
+  --alert-light: rgba(239, 68, 68, 0.08);
+  --up:        #10B981;
+  --up-light:  rgba(16, 185, 129, 0.10);
+
+  --shadow:    0 14px 40px rgba(15, 23, 42, 0.10);
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+
+  --radius:    1.25rem;
+  --radius-sm: 0.75rem;
+
+  --font-heading: var(--font-space-grotesk), system-ui, sans-serif;
+  --font-body:    var(--font-inter), system-ui, sans-serif;
 }
 
+/* ─── Expose to Tailwind v4 ─────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg:           var(--bg);
+  --color-surface:      var(--surface);
+  --color-surface-2:    var(--surface-2);
+  --color-border:       var(--border);
+  --color-ink:          var(--ink);
+  --color-muted:        var(--muted);
+  --color-brand:        var(--brand);
+  --color-brand-light:  var(--brand-light);
+  --color-cool:         var(--cool);
+  --color-cool-light:   var(--cool-light);
+  --color-warm:         var(--warm);
+  --color-warm-light:   var(--warm-light);
+  --color-alert:        var(--alert);
+  --color-alert-light:  var(--alert-light);
+  --color-up:           var(--up);
+  --color-up-light:     var(--up-light);
+
+  --shadow-card:        var(--shadow);
+  --shadow-card-sm:     var(--shadow-sm);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ─── Base Styles ───────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+/* ─── Form Base Styles ──────────────────────────────────────────── */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+textarea,
+select {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.625rem 0.875rem;
+  font-size: 0.9375rem;
+  font-family: var(--font-body);
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-light);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+}
+
+/* ─── Checkbox ──────────────────────────────────────────────────── */
+input[type="checkbox"] {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+/* ─── Selection ─────────────────────────────────────────────────── */
+::selection {
+  background: var(--brand-light);
+  color: var(--ink);
 }
