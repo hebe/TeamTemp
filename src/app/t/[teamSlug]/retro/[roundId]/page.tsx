@@ -65,14 +65,52 @@ export default async function RetroPage({ params }: PageProps) {
   const byAvgDesc = [...aggregates].sort((a, b) => b.avg - a.avg);
   const bySpread = [...aggregates].sort((a, b) => b.spread - a.spread);
 
-  // Worth celebrating: highest averages (above 65% of scale)
-  const worthCelebrating = byAvgDesc
-    .filter((a) => a.avg >= scaleMax * 0.65)
-    .slice(0, 3)
-    .map((a) => ({
+  // Round scores: all questions with their averages (for the scores box)
+  const roundScores = aggregates.map((a) => {
+    const prev = prevByQuestion.get(a.question_id);
+    const delta = prev ? Math.round((a.avg - prev.avg) * 100) / 100 : null;
+    return {
       question_text: a.question_text,
       avg: a.avg,
-    }));
+      delta,
+    };
+  });
+
+  // Worth celebrating: pick ONE thing — either best improvement or highest score above 2.5
+  let celebration: { question_text: string; reason: string } | null = null;
+
+  // First, check for the biggest improvement
+  const improvements: { question_text: string; delta: number }[] = [];
+  if (prevAggregates.length > 0) {
+    for (const agg of aggregates) {
+      const prev = prevByQuestion.get(agg.question_id);
+      if (prev) {
+        const delta = Math.round((agg.avg - prev.avg) * 100) / 100;
+        if (delta > 0.1) {
+          improvements.push({ question_text: agg.question_text, delta });
+        }
+      }
+    }
+    improvements.sort((a, b) => b.delta - a.delta);
+  }
+
+  if (improvements.length > 0) {
+    const best = improvements[0];
+    celebration = {
+      question_text: best.question_text,
+      reason: `Moved up +${best.delta.toFixed(2)} since last round`,
+    };
+  } else {
+    // Fall back to highest score above threshold (83% of scale, i.e. 2.5/3)
+    const threshold = scaleMax * 0.83;
+    const highScorer = byAvgDesc.find((a) => a.avg >= threshold);
+    if (highScorer) {
+      celebration = {
+        question_text: highScorer.question_text,
+        reason: `Scored ${highScorer.avg.toFixed(1)}/${scaleMax} — that's strong`,
+      };
+    }
+  }
 
   // Biggest drops: largest negative delta compared to previous round
   const drops: { question_text: string; delta: number }[] = [];
@@ -152,25 +190,62 @@ export default async function RetroPage({ params }: PageProps) {
         </p>
       </header>
 
-      {/* ── Worth Celebrating (full width, top) ──────────────────── */}
-      {worthCelebrating.length > 0 && (
+      {/* ── This round's scores (full width, top) ──────────────── */}
+      <Card className="p-6 mb-5">
+        <SectionHeading
+          title="This round's scores"
+          subtitle={`${count} responses · ${aggregates.length} questions`}
+        />
+        <div className="space-y-2.5">
+          {roundScores.map((s, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3"
+            >
+              <span className="text-[0.9375rem] flex-1">{s.question_text}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="w-20 h-2.5 bg-surface-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-brand rounded-full"
+                    style={{ width: `${((s.avg - 1) / (scaleMax - 1)) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[0.875rem] font-semibold w-8 text-right">
+                  {s.avg.toFixed(1)}
+                </span>
+                {s.delta !== null && s.delta !== 0 && (
+                  <span
+                    className={`text-[0.75rem] font-semibold w-10 text-right ${
+                      s.delta > 0 ? "text-up" : "text-alert"
+                    }`}
+                  >
+                    {s.delta > 0 ? "+" : ""}{s.delta.toFixed(2)}
+                  </span>
+                )}
+                {(s.delta === null || s.delta === 0) && (
+                  <span className="w-10" />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* ── Worth Celebrating (single item, conditional) ────────── */}
+      {celebration && (
         <Card className="p-6 mb-5 border-2 border-up/20">
           <SectionHeading
             title="Worth celebrating"
-            subtitle="These are looking good. Sometimes it helps to notice what's working."
+            subtitle="Sometimes it helps to notice what's working."
           />
-          <div className="space-y-2">
-            {worthCelebrating.map((item, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 bg-up-light rounded-[var(--radius-sm)] px-4 py-3"
-              >
-                <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface text-up text-[0.875rem] font-bold shrink-0">
-                  {item.avg.toFixed(1)}
-                </span>
-                <span className="text-[0.9375rem]">&ldquo;{item.question_text}&rdquo;</span>
-              </div>
-            ))}
+          <div className="flex items-center gap-3 bg-up-light rounded-[var(--radius-sm)] px-4 py-3">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface text-up text-[1rem] shrink-0">
+              ✦
+            </span>
+            <div>
+              <p className="text-[0.9375rem] font-medium">&ldquo;{celebration.question_text}&rdquo;</p>
+              <p className="text-[0.8125rem] text-muted mt-0.5">{celebration.reason}</p>
+            </div>
           </div>
         </Card>
       )}
