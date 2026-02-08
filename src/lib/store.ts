@@ -18,6 +18,7 @@ export type Team = {
   name: string;
   slug: string;
   admin_token: string;
+  admin_email: string;
   created_at: string;
 };
 

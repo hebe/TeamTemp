@@ -49,6 +49,12 @@ export async function getTeamByAdminToken(token: string) {
   return db.teams.find((t) => t.admin_token === token) ?? null;
 }
 
+export async function getTeamByEmail(email: string) {
+  const db = readDB();
+  const normalized = email.trim().toLowerCase();
+  return db.teams.find((t) => t.admin_email === normalized) ?? null;
+}
+
 export async function getTeamSettings(teamId: string) {
   const db = readDB();
   return db.team_settings.find((s) => s.team_id === teamId) ?? null;
@@ -103,7 +109,7 @@ const DEFAULT_QUESTIONS: { text: string; category: string; kind: "fixed" | "rota
   { text: "I have enough energy at the end of the week.", category: "energy", kind: "rotating_pool" },
 ];
 
-export async function createTeam(name: string) {
+export async function createTeam(name: string, email: string) {
   const db = readDB();
 
   const baseSlug = generateSlug(name);
@@ -116,6 +122,7 @@ export async function createTeam(name: string) {
     name: name.trim(),
     slug,
     admin_token: adminToken,
+    admin_email: email.trim().toLowerCase(),
     created_at: now(),
   };
   db.teams.push(team);
@@ -180,6 +187,7 @@ export async function getAllTeams() {
         name: t.name,
         slug: t.slug,
         admin_token: t.admin_token,
+        admin_email: t.admin_email,
         created_at: t.created_at,
         roundCount: teamRounds.length,
         submissionCount,

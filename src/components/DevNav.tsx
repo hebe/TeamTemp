@@ -1,89 +1,60 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 type LinkItem = { href: string; label: string };
 
-/**
- * Extract team context from the current URL path.
- */
-function useTeamContext(pathname: string) {
-  return useMemo(() => {
-    const adminMatch = pathname.match(/^\/admin\/([^/]+)/);
-    const dashMatch = pathname.match(/^\/t\/([^/]+)/);
-    const superMatch = pathname.match(/^\/super\/([^/]+)/);
-
-    return {
-      adminToken: adminMatch?.[1] ?? null,
-      teamSlug: dashMatch?.[1] ?? null,
-      superToken: superMatch?.[1] ?? null,
-    };
-  }, [pathname]);
-}
+const DEMO_ADMIN_TOKEN = "demo-admin-token-abc123";
+const DEMO_SLUG = "tx";
+const SUPER_TOKEN = "dev-super-token";
 
 export default function DevNav() {
   const pathname = usePathname();
-  const { adminToken, teamSlug, superToken } = useTeamContext(pathname);
   const [open, setOpen] = useState(true);
-  const [links, setLinks] = useState<LinkItem[]>([{ href: "/", label: "Landing" }]);
+  const [links, setLinks] = useState<LinkItem[]>([]);
 
   useEffect(() => {
-    // ── Admin page: fetch full team context ──
-    if (adminToken) {
-      fetch(`/api/admin/load?adminToken=${encodeURIComponent(adminToken)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          const rounds = data.rounds ?? [];
-          const slug = data.team?.slug;
-          const built: LinkItem[] = [{ href: "/", label: "Landing" }];
+    // Always fetch the demo team so we get a complete set of links
+    fetch(`/api/admin/load?adminToken=${encodeURIComponent(DEMO_ADMIN_TOKEN)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const rounds = data.rounds ?? [];
+        const built: LinkItem[] = [{ href: "/", label: "Landing" }];
 
-          const openRound = rounds.find((r: { status: string }) => r.status === "open");
-          if (openRound) {
-            built.push({ href: `/r/${openRound.token}`, label: "Respond" });
-          }
+        const openRound = rounds.find((r: { status: string }) => r.status === "open");
+        if (openRound) {
+          built.push({ href: `/r/${openRound.token}`, label: "Respond" });
+        }
 
-          if (slug) {
-            built.push({ href: `/t/${slug}`, label: "Dashboard" });
+        built.push({ href: `/t/${DEMO_SLUG}`, label: "Dashboard" });
 
-            const closed = rounds
-              .filter((r: { status: string }) => r.status === "closed")
-              .sort((a: { created_at: string }, b: { created_at: string }) =>
-                b.created_at.localeCompare(a.created_at)
-              );
-            if (closed.length > 0) {
-              built.push({ href: `/t/${slug}/retro/${closed[0].id}`, label: "Retro" });
-            }
-          }
+        const closed = rounds
+          .filter((r: { status: string }) => r.status === "closed")
+          .sort((a: { created_at: string }, b: { created_at: string }) =>
+            b.created_at.localeCompare(a.created_at)
+          );
+        if (closed.length > 0) {
+          built.push({ href: `/t/${DEMO_SLUG}/retro/${closed[0].id}`, label: "Retro" });
+        }
 
-          built.push({ href: `/admin/${adminToken}`, label: "Admin" });
-          setLinks(built);
-        })
-        .catch(() => {});
-      return;
-    }
+        built.push({ href: `/admin/${DEMO_ADMIN_TOKEN}`, label: "Admin" });
+        built.push({ href: `/super/${SUPER_TOKEN}`, label: "Super" });
 
-    // ── Dashboard / retro page: show what we can from the slug ──
-    if (teamSlug) {
-      setLinks([
-        { href: "/", label: "Landing" },
-        { href: `/t/${teamSlug}`, label: "Dashboard" },
-      ]);
-      return;
-    }
+        setLinks(built);
+      })
+      .catch(() => {
+        // Fallback if fetch fails — still show all static links
+        setLinks([
+          { href: "/", label: "Landing" },
+          { href: `/t/${DEMO_SLUG}`, label: "Dashboard" },
+          { href: `/admin/${DEMO_ADMIN_TOKEN}`, label: "Admin" },
+          { href: `/super/${SUPER_TOKEN}`, label: "Super" },
+        ]);
+      });
+  }, [pathname]);
 
-    // ── Super-admin page ──
-    if (superToken) {
-      setLinks([
-        { href: "/", label: "Landing" },
-        { href: `/super/${superToken}`, label: "Super Admin" },
-      ]);
-      return;
-    }
-
-    // ── Default: just landing ──
-    setLinks([{ href: "/", label: "Landing" }]);
-  }, [pathname, adminToken, teamSlug, superToken]);
+  if (links.length === 0) return null;
 
   if (!open) {
     return (

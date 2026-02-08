@@ -9,6 +9,7 @@ type TeamRow = {
   name: string;
   slug: string;
   admin_token: string;
+  admin_email: string;
   created_at: string;
   roundCount: number;
   submissionCount: number;
@@ -24,6 +25,7 @@ export default function SuperAdminPage({
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
+  const [copiedTeamId, setCopiedTeamId] = useState<string | null>(null);
 
   // Unwrap params
   useEffect(() => {
@@ -54,6 +56,13 @@ export default function SuperAdminPage({
         setLoading(false);
       });
   }, [token]);
+
+  const handleCopyAdminLink = (team: TeamRow) => {
+    const url = `${window.location.origin}/admin/${team.admin_token}`;
+    navigator.clipboard.writeText(url);
+    setCopiedTeamId(team.id);
+    setTimeout(() => setCopiedTeamId(null), 2000);
+  };
 
   // ── Unauthorized ──
   if (unauthorized) {
@@ -117,6 +126,7 @@ export default function SuperAdminPage({
               <thead>
                 <tr className="border-b-2 border-border text-left">
                   <th className="px-5 py-3 font-semibold">Team</th>
+                  <th className="px-5 py-3 font-semibold">Admin email</th>
                   <th className="px-5 py-3 font-semibold text-center">Rounds</th>
                   <th className="px-5 py-3 font-semibold text-center">Responses</th>
                   <th className="px-5 py-3 font-semibold">Last round</th>
@@ -138,6 +148,9 @@ export default function SuperAdminPage({
                         </span>
                       </div>
                     </td>
+                    <td className="px-5 py-3 text-muted text-[0.8125rem]">
+                      {team.admin_email}
+                    </td>
                     <td className="px-5 py-3 text-center tabular-nums">
                       {team.roundCount}
                     </td>
@@ -147,7 +160,7 @@ export default function SuperAdminPage({
                     <td className="px-5 py-3 text-muted">
                       {team.lastRoundDate
                         ? formatDate(team.lastRoundDate)
-                        : "—"}
+                        : "\u2014"}
                     </td>
                     <td className="px-5 py-3 text-muted">
                       {formatDate(team.created_at)}
@@ -166,6 +179,12 @@ export default function SuperAdminPage({
                         >
                           Admin
                         </a>
+                        <button
+                          onClick={() => handleCopyAdminLink(team)}
+                          className="text-brand hover:underline text-[0.8125rem] cursor-pointer"
+                        >
+                          {copiedTeamId === team.id ? "Copied!" : "Copy link"}
+                        </button>
                       </div>
                     </td>
                   </tr>
