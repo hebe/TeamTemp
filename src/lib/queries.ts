@@ -1,7 +1,7 @@
 import {
   readDB, writeDB, uid, now,
-  type Team, type TeamSettings, type Question,
-  type QuestionSetItem, type Round, type RoundQuestion,
+  type DB, type Team, type TeamSettings, type Question,
+  type QuestionSet, type QuestionSetItem, type Round, type RoundQuestion,
 } from "./store";
 
 export type { Team, TeamSettings, Question, QuestionSetItem, Round, RoundQuestion };
@@ -49,6 +49,12 @@ export async function getTeamByAdminToken(token: string) {
   return db.teams.find((t) => t.admin_token === token) ?? null;
 }
 
+export async function getTeamByEmail(email: string) {
+  const db = readDB();
+  const normalized = email.trim().toLowerCase();
+  return db.teams.find((t) => t.admin_email === normalized) ?? null;
+}
+
 export async function getTeamSettings(teamId: string) {
   const db = readDB();
   return db.team_settings.find((s) => s.team_id === teamId) ?? null;
@@ -64,6 +70,131 @@ export async function updateTeamSettings(
   db.team_settings[idx] = { ...db.team_settings[idx], ...settings };
   writeDB(db);
   return true;
+}
+
+// ─── Team Creation ──────────────────────────────────────────────────
+
+function generateSlug(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 50);
+  return slug || "team";
+}
+
+function ensureUniqueSlug(baseSlug: string, db: DB): string {
+  let slug = baseSlug;
+  let counter = 2;
+  while (db.teams.some((t) => t.slug === slug)) {
+    slug = `${baseSlug}-${counter}`;
+    counter++;
+  }
+  return slug;
+}
+
+const DEFAULT_QUESTIONS: { text: string; category: string; kind: "fixed" | "rotating_pool" }[] = [
+  { text: "Workload feels sustainable.", category: "workload", kind: "fixed" },
+  { text: "I get enough focus time to do good work.", category: "focus", kind: "fixed" },
+  { text: "It's clear what matters most right now.", category: "clarity", kind: "fixed" },
+  { text: "I understand why we're doing what we're doing.", category: "purpose", kind: "fixed" },
+  { text: "I feel comfortable raising concerns in this team.", category: "safety", kind: "rotating_pool" },
+  { text: "Decisions are made at a reasonable pace.", category: "pace", kind: "rotating_pool" },
+  { text: "I know who to ask when I'm stuck.", category: "collaboration", kind: "rotating_pool" },
+  { text: "Meetings feel worthwhile.", category: "meetings", kind: "rotating_pool" },
+  { text: "I get useful feedback on my work.", category: "feedback", kind: "rotating_pool" },
+  { text: "I have enough energy at the end of the week.", category: "energy", kind: "rotating_pool" },
+];
+
+export async function createTeam(name: string, email: string) {
+  const db = readDB();
+
+  const baseSlug = generateSlug(name);
+  const slug = ensureUniqueSlug(baseSlug, db);
+  const adminToken = uid().slice(0, 24);
+
+  // 1. Create team
+  const team: Team = {
+    id: uid(),
+    name: name.trim(),
+    slug,
+    admin_token: adminToken,
+    admin_email: email.trim().toLowerCase(),
+    created_at: now(),
+  };
+  db.teams.push(team);
+
+  // 2. Create default settings
+  const settings: TeamSettings = {
+    team_id: team.id,
+    cadence: "biweekly",
+    scale_max: 3,
+    min_responses_to_show: 4,
+    allow_free_text: true,
+  };
+  db.team_settings.push(settings);
+
+  // 3. Create questions
+  const questions: Question[] = DEFAULT_QUESTIONS.map((q, idx) => ({
+    id: uid(),
+    team_id: team.id,
+    text: q.text,
+    category: q.category,
+    is_active: true,
+    created_at: new Date(Date.now() + idx).toISOString(),
+  }));
+  db.question_bank.push(...questions);
+
+  // 4. Create question set
+  const qSet: QuestionSet = {
+    id: uid(),
+    team_id: team.id,
+    is_default: true,
+  };
+  db.question_set.push(qSet);
+
+  // 5. Create question set items
+  DEFAULT_QUESTIONS.forEach((q, idx) => {
+    db.question_set_item.push({
+      id: uid(),
+      question_set_id: qSet.id,
+      question_id: questions[idx].id,
+      position: idx + 1,
+      kind: q.kind,
+    });
+  });
+
+  writeDB(db);
+  return { team, adminLink: `/admin/${adminToken}` };
+}
+
+export async function getAllTeams() {
+  const db = readDB();
+  return db.teams
+    .map((t) => {
+      const teamRounds = db.rounds.filter((r) => r.team_id === t.id);
+      const roundIds = new Set(teamRounds.map((r) => r.id));
+      const submissionCount = db.submissions.filter((s) => roundIds.has(s.round_id)).length;
+      const closedRounds = teamRounds
+        .filter((r) => r.status === "closed")
+        .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+      return {
+        id: t.id,
+        name: t.name,
+        slug: t.slug,
+        admin_token: t.admin_token,
+        admin_email: t.admin_email,
+        created_at: t.created_at,
+        roundCount: teamRounds.length,
+        submissionCount,
+        lastRoundDate: closedRounds[0]?.created_at ?? null,
+      };
+    })
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
 // ─── Questions ───────────────────────────────────────────────────────

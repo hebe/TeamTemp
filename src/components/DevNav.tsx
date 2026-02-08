@@ -5,49 +5,56 @@ import { usePathname } from "next/navigation";
 
 type LinkItem = { href: string; label: string };
 
+const DEMO_ADMIN_TOKEN = "demo-admin-token-abc123";
+const DEMO_SLUG = "tx";
+const SUPER_TOKEN = "dev-super-token";
+
 export default function DevNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(true);
-  const [links, setLinks] = useState<LinkItem[]>([
-    { href: "/", label: "Landing" },
-    { href: "/t/tx", label: "Dashboard" },
-    { href: "/admin/demo-admin-token-abc123", label: "Admin" },
-  ]);
+  const [links, setLinks] = useState<LinkItem[]>([]);
 
   useEffect(() => {
-    // Dynamically build Respond + Retro links from current data
-    fetch("/api/admin/load?adminToken=demo-admin-token-abc123")
+    // Always fetch the demo team so we get a complete set of links
+    fetch(`/api/admin/load?adminToken=${encodeURIComponent(DEMO_ADMIN_TOKEN)}`)
       .then((r) => r.json())
       .then((data) => {
         const rounds = data.rounds ?? [];
-        const built: LinkItem[] = [
-          { href: "/", label: "Landing" },
-        ];
+        const built: LinkItem[] = [{ href: "/", label: "Landing" }];
 
-        // Respond: find open round
         const openRound = rounds.find((r: { status: string }) => r.status === "open");
         if (openRound) {
           built.push({ href: `/r/${openRound.token}`, label: "Respond" });
         }
 
-        built.push({ href: "/t/tx", label: "Dashboard" });
+        built.push({ href: `/t/${DEMO_SLUG}`, label: "Dashboard" });
 
-        // Retro: find latest closed round
         const closed = rounds
           .filter((r: { status: string }) => r.status === "closed")
           .sort((a: { created_at: string }, b: { created_at: string }) =>
             b.created_at.localeCompare(a.created_at)
           );
         if (closed.length > 0) {
-          built.push({ href: `/t/tx/retro/${closed[0].id}`, label: "Retro" });
+          built.push({ href: `/t/${DEMO_SLUG}/retro/${closed[0].id}`, label: "Retro" });
         }
 
-        built.push({ href: "/admin/demo-admin-token-abc123", label: "Admin" });
+        built.push({ href: `/admin/${DEMO_ADMIN_TOKEN}`, label: "Admin" });
+        built.push({ href: `/super/${SUPER_TOKEN}`, label: "Super" });
 
         setLinks(built);
       })
-      .catch(() => {});
-  }, [pathname]); // refetch when we navigate — e.g. after creating/closing a round
+      .catch(() => {
+        // Fallback if fetch fails — still show all static links
+        setLinks([
+          { href: "/", label: "Landing" },
+          { href: `/t/${DEMO_SLUG}`, label: "Dashboard" },
+          { href: `/admin/${DEMO_ADMIN_TOKEN}`, label: "Admin" },
+          { href: `/super/${SUPER_TOKEN}`, label: "Super" },
+        ]);
+      });
+  }, [pathname]);
+
+  if (links.length === 0) return null;
 
   if (!open) {
     return (
