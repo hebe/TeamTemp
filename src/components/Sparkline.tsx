@@ -1,17 +1,19 @@
 "use client";
 
 type SparklineProps = {
+  /** Normalized 0–1 values (one per round) */
   values: number[];
-  scaleMax: number;
   width?: number;
   height?: number;
+  /** Indices where the scale changed (optional, for visual markers) */
+  scaleChangeIndices?: number[];
 };
 
 export default function Sparkline({
   values,
-  scaleMax,
   width = 140,
   height = 40,
+  scaleChangeIndices,
 }: SparklineProps) {
   if (values.length === 0) return null;
 
@@ -19,9 +21,10 @@ export default function Sparkline({
   const innerW = width - pad * 2;
   const innerH = height - pad * 2;
 
+  // Values are normalized 0–1, so Y maps directly
   const points = values.map((v, i) => {
     const x = pad + (values.length === 1 ? innerW / 2 : (i / (values.length - 1)) * innerW);
-    const y = pad + innerH - ((v - 1) / (scaleMax - 1)) * innerH;
+    const y = pad + innerH - v * innerH;
     return { x, y };
   });
 
@@ -50,6 +53,24 @@ export default function Sparkline({
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      {/* Scale change markers — subtle dashed vertical lines */}
+      {scaleChangeIndices?.map((idx) => {
+        if (idx < 0 || idx >= points.length) return null;
+        const x = points[idx].x;
+        return (
+          <line
+            key={`sc-${idx}`}
+            x1={x}
+            y1={pad - 2}
+            x2={x}
+            y2={height - pad + 2}
+            stroke="var(--muted)"
+            strokeWidth={1}
+            strokeDasharray="2 2"
+            opacity={0.5}
+          />
+        );
+      })}
       <circle cx={last.x} cy={last.y} r={4} fill="var(--brand)" />
       <circle cx={last.x} cy={last.y} r={7} fill="var(--brand)" opacity={0.15} />
     </svg>

@@ -58,6 +58,7 @@ export type Round = {
   question_set_id: string | null;
   token: string;
   status: "open" | "closed";
+  scale_max: number;
   opens_at: string;
   closes_at: string | null;
   created_at: string;

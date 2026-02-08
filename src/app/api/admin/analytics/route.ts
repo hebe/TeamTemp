@@ -3,11 +3,14 @@ import {
   getTeamByAdminToken,
   getTeamSettings,
   getDashboardData,
+  normalizeAvg,
+  normalizeSpread,
 } from "@/lib/queries";
 
 /**
  * GET /api/admin/analytics?adminToken=xxx
  * Returns detailed distribution data per question per round.
+ * Each round carries its own scale_max for correct distribution buckets.
  */
 export async function GET(request: NextRequest) {
   const adminToken = request.nextUrl.searchParams.get("adminToken");
@@ -21,7 +24,7 @@ export async function GET(request: NextRequest) {
   }
 
   const settings = await getTeamSettings(team.id);
-  const scaleMax = settings?.scale_max ?? 3;
+  const currentScaleMax = settings?.scale_max ?? 3;
 
   const allAggregates = await getDashboardData(team.id, 20);
 
@@ -29,10 +32,13 @@ export async function GET(request: NextRequest) {
   type RoundData = {
     round_id: string;
     round_date: string;
+    scale_max: number;
     avg: number;
+    normAvg: number;
     spread: number;
+    normSpread: number;
     count: number;
-    distribution: number[]; // counts per scale option (1..scaleMax)
+    distribution: number[]; // counts per scale option (1..round's scaleMax)
   };
 
   type QuestionAnalytics = {
@@ -52,17 +58,21 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Compute distribution
+    // Compute distribution using the round's own scale_max
+    const roundScale = agg.scale_max;
     const distribution: number[] = [];
-    for (let i = 1; i <= scaleMax; i++) {
+    for (let i = 1; i <= roundScale; i++) {
       distribution.push(agg.values.filter((v) => v === i).length);
     }
 
     questionMap.get(agg.question_id)!.rounds.push({
       round_id: agg.round_id,
       round_date: agg.round_created_at,
+      scale_max: roundScale,
       avg: agg.avg,
+      normAvg: normalizeAvg(agg.avg, roundScale),
       spread: agg.spread,
+      normSpread: normalizeSpread(agg.spread, roundScale),
       count: agg.count,
       distribution,
     });
@@ -76,7 +86,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    scaleMax,
+    currentScaleMax,
     questions: Array.from(questionMap.values()),
   });
 }

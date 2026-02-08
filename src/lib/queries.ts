@@ -12,11 +12,30 @@ export type QuestionAggregate = {
   question_text: string;
   round_id: string;
   round_created_at: string;
+  scale_max: number;
   avg: number;
   spread: number;
   count: number;
   values: number[];
 };
+
+/**
+ * Normalize a raw average to 0–1 range given the scale used.
+ * e.g. 2.5 on a 3-point scale → (2.5-1)/(3-1) = 0.75
+ */
+export function normalizeAvg(avg: number, scaleMax: number): number {
+  if (scaleMax <= 1) return 0;
+  return (avg - 1) / (scaleMax - 1);
+}
+
+/**
+ * Normalize a spread (std dev) to 0–1 range given the scale used.
+ * Max possible std dev on a scale 1..N is (N-1)/2.
+ */
+export function normalizeSpread(spread: number, scaleMax: number): number {
+  if (scaleMax <= 1) return 0;
+  return spread / ((scaleMax - 1) / 2);
+}
 
 // ─── Team Lookups ────────────────────────────────────────────────────
 
@@ -199,13 +218,17 @@ export async function createRound(teamId: string) {
     }
   }
 
-  // 3. Create the round
+  // 3. Create the round — stamp current scale_max so historical data stays correct
+  const settings = db.team_settings.find((s) => s.team_id === teamId);
+  const roundScaleMax = settings?.scale_max ?? 3;
+
   const round: Round = {
     id: uid(),
     team_id: teamId,
     question_set_id: qSet.id,
     token: uid().slice(0, 12),
     status: "open",
+    scale_max: roundScaleMax,
     opens_at: now(),
     closes_at: null,
     created_at: now(),
@@ -335,6 +358,7 @@ export async function getDashboardData(teamId: string, limit = 8): Promise<Quest
         question_text: q?.text ?? "",
         round_id: round.id,
         round_created_at: round.created_at,
+        scale_max: round.scale_max ?? 3,
         avg,
         spread,
         count: values.length,
@@ -372,6 +396,7 @@ export async function getRoundAggregates(roundId: string): Promise<QuestionAggre
       question_text: q?.text ?? "",
       round_id: roundId,
       round_created_at: round.created_at,
+      scale_max: round.scale_max ?? 3,
       avg,
       spread,
       count: values.length,

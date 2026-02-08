@@ -29,7 +29,8 @@ export async function GET(request: NextRequest) {
       status: round.status,
     },
     settings: {
-      scale_max: settings?.scale_max ?? 3,
+      // Use the round's own scale_max (stamped at creation) for consistency
+      scale_max: round.scale_max ?? settings?.scale_max ?? 3,
       allow_free_text: settings?.allow_free_text ?? true,
     },
     questions: rqs.map((rq) => ({
