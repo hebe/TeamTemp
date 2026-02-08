@@ -143,6 +143,14 @@ export default function DashboardClient({
       <header className="mb-10">
         <Badge variant="brand">TX Temp</Badge>
         <h1 className="text-3xl mt-3">{teamName}</h1>
+        {lastRoundId && (
+          <a
+            href={`/t/${teamSlug}/retro/${lastRoundId}`}
+            className="inline-flex items-center gap-2 mt-3 text-[0.875rem] text-brand hover:underline"
+          >
+            Open retro for latest round →
+          </a>
+        )}
       </header>
 
       {/* ── What changed? ─────────────────────────────────────── */}
@@ -281,16 +289,8 @@ export default function DashboardClient({
         );
       })()}
 
-      {/* ── Retro Link ────────────────────────────────────────── */}
-      {lastRoundId && (
-        <div className="text-center">
-          <a href={`/t/${teamSlug}/retro/${lastRoundId}`}>
-            <Button variant="outline" size="md">
-              Open retro view for latest round →
-            </Button>
-          </a>
-        </div>
-      )}
+      {/* spacer at bottom */}
+      <div className="h-10" />
     </div>
   );
 }
