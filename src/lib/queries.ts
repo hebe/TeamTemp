@@ -1,8 +1,21 @@
-import { supabase } from "./supabase-server";
+import { db } from "./db";
+import {
+  teams,
+  teamSettings,
+  questionBank,
+  questionSet,
+  questionSetItem,
+  rounds,
+  roundQuestions,
+  submissions,
+  answers,
+  freeTextTable,
+} from "./schema";
+import { eq, and, inArray, lt, asc, desc, count } from "drizzle-orm";
 import crypto from "crypto";
 
 // ─── Types ──────────────────────────────────────────────────────────
-// These mirror the Supabase schema so the rest of the app is unchanged.
+// These mirror the database schema so the rest of the app is unchanged.
 
 export type Team = {
   id: string;
@@ -107,53 +120,58 @@ export function normalizeSpread(spread: number, scaleMax: number): number {
 // ─── Team Lookups ───────────────────────────────────────────────────
 
 export async function getTeamBySlug(slug: string): Promise<Team | null> {
-  const { data } = await supabase
-    .from("teams")
-    .select("*")
-    .eq("slug", slug)
-    .single();
-  return data ?? null;
+  const [team] = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.slug, slug))
+    .limit(1);
+  return (team as Team) ?? null;
 }
 
 export async function getTeamByAdminToken(token: string): Promise<Team | null> {
-  const { data } = await supabase
-    .from("teams")
-    .select("*")
-    .eq("admin_token", token)
-    .single();
-  return data ?? null;
+  const [team] = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.admin_token, token))
+    .limit(1);
+  return (team as Team) ?? null;
 }
 
 export async function getTeamByEmail(email: string): Promise<Team | null> {
   const normalized = email.trim().toLowerCase();
-  const { data } = await supabase
-    .from("teams")
-    .select("*")
-    .eq("admin_email", normalized)
-    .single();
-  return data ?? null;
+  const [team] = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.admin_email, normalized))
+    .limit(1);
+  return (team as Team) ?? null;
 }
 
 export async function getTeamSettings(
   teamId: string
 ): Promise<TeamSettings | null> {
-  const { data } = await supabase
-    .from("team_settings")
-    .select("*")
-    .eq("team_id", teamId)
-    .single();
-  return data ?? null;
+  const [settings] = await db
+    .select()
+    .from(teamSettings)
+    .where(eq(teamSettings.team_id, teamId))
+    .limit(1);
+  if (!settings) return null;
+  return settings as TeamSettings;
 }
 
 export async function updateTeamSettings(
   teamId: string,
   settings: Partial<Omit<TeamSettings, "team_id">>
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from("team_settings")
-    .update(settings)
-    .eq("team_id", teamId);
-  return !error;
+  try {
+    await db
+      .update(teamSettings)
+      .set(settings)
+      .where(eq(teamSettings.team_id, teamId));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Team Creation ──────────────────────────────────────────────────
@@ -176,12 +194,12 @@ async function ensureUniqueSlug(baseSlug: string): Promise<string> {
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const { data } = await supabase
-      .from("teams")
-      .select("id")
-      .eq("slug", slug)
-      .maybeSingle();
-    if (!data) break;
+    const [existing] = await db
+      .select({ id: teams.id })
+      .from(teams)
+      .where(eq(teams.slug, slug))
+      .limit(1);
+    if (!existing) break;
     slug = `${baseSlug}-${counter}`;
     counter++;
   }
@@ -251,21 +269,19 @@ export async function createTeam(name: string, email: string) {
   const adminToken = uid().slice(0, 24);
 
   // 1. Create team
-  const { data: team, error: teamErr } = await supabase
-    .from("teams")
-    .insert({
+  const [team] = await db
+    .insert(teams)
+    .values({
       name: name.trim(),
       slug,
       admin_token: adminToken,
       admin_email: email.trim().toLowerCase(),
     })
-    .select()
-    .single();
-  if (teamErr || !team)
-    throw new Error(teamErr?.message ?? "Failed to create team");
+    .returning();
+  if (!team) throw new Error("Failed to create team");
 
   // 2. Create default settings
-  await supabase.from("team_settings").insert({
+  await db.insert(teamSettings).values({
     team_id: team.id,
     cadence: "biweekly",
     scale_max: 3,
@@ -280,18 +296,17 @@ export async function createTeam(name: string, email: string) {
     category: q.category,
     is_active: true,
   }));
-  const { data: questions } = await supabase
-    .from("question_bank")
-    .insert(questionRows)
-    .select();
-  if (!questions) throw new Error("Failed to create questions");
+  const questions = await db
+    .insert(questionBank)
+    .values(questionRows)
+    .returning();
+  if (!questions.length) throw new Error("Failed to create questions");
 
   // 4. Create question set
-  const { data: qSet } = await supabase
-    .from("question_set")
-    .insert({ team_id: team.id, is_default: true })
-    .select()
-    .single();
+  const [qSet] = await db
+    .insert(questionSet)
+    .values({ team_id: team.id, is_default: true })
+    .returning();
   if (!qSet) throw new Error("Failed to create question set");
 
   // 5. Create question set items
@@ -301,49 +316,45 @@ export async function createTeam(name: string, email: string) {
     position: idx + 1,
     kind: q.kind,
   }));
-  await supabase.from("question_set_item").insert(setItems);
+  await db.insert(questionSetItem).values(setItems);
 
   return { team: team as Team, adminLink: `/admin/${adminToken}` };
 }
 
 export async function getAllTeams() {
-  const { data: teams } = await supabase
-    .from("teams")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (!teams) return [];
+  const allTeams = await db
+    .select()
+    .from(teams)
+    .orderBy(desc(teams.created_at));
+  if (!allTeams.length) return [];
 
   const results = [];
-  for (const t of teams) {
-    // Count rounds
-    const { count: roundCount } = await supabase
-      .from("rounds")
-      .select("*", { count: "exact", head: true })
-      .eq("team_id", t.id);
+  for (const t of allTeams) {
+    const [{ value: roundCount }] = await db
+      .select({ value: count() })
+      .from(rounds)
+      .where(eq(rounds.team_id, t.id));
 
-    // Count submissions across all rounds
-    const { data: teamRounds } = await supabase
-      .from("rounds")
-      .select("id")
-      .eq("team_id", t.id);
-    const roundIds = (teamRounds ?? []).map((r: { id: string }) => r.id);
+    const teamRounds = await db
+      .select({ id: rounds.id })
+      .from(rounds)
+      .where(eq(rounds.team_id, t.id));
+    const roundIds = teamRounds.map((r) => r.id);
 
     let submissionCount = 0;
     if (roundIds.length > 0) {
-      const { count } = await supabase
-        .from("submissions")
-        .select("*", { count: "exact", head: true })
-        .in("round_id", roundIds);
-      submissionCount = count ?? 0;
+      const [{ value }] = await db
+        .select({ value: count() })
+        .from(submissions)
+        .where(inArray(submissions.round_id, roundIds));
+      submissionCount = value;
     }
 
-    // Last closed round date
-    const { data: lastClosed } = await supabase
-      .from("rounds")
-      .select("created_at")
-      .eq("team_id", t.id)
-      .eq("status", "closed")
-      .order("created_at", { ascending: false })
+    const lastClosed = await db
+      .select({ created_at: rounds.created_at })
+      .from(rounds)
+      .where(and(eq(rounds.team_id, t.id), eq(rounds.status, "closed")))
+      .orderBy(desc(rounds.created_at))
       .limit(1);
 
     results.push({
@@ -353,9 +364,9 @@ export async function getAllTeams() {
       admin_token: t.admin_token,
       admin_email: t.admin_email,
       created_at: t.created_at,
-      roundCount: roundCount ?? 0,
+      roundCount,
       submissionCount,
-      lastRoundDate: lastClosed?.[0]?.created_at ?? null,
+      lastRoundDate: lastClosed[0]?.created_at ?? null,
     });
   }
 
@@ -365,40 +376,55 @@ export async function getAllTeams() {
 // ─── Questions ──────────────────────────────────────────────────────
 
 export async function getQuestions(teamId: string): Promise<Question[]> {
-  const { data } = await supabase
-    .from("question_bank")
-    .select("*")
-    .eq("team_id", teamId)
-    .eq("is_active", true)
-    .order("created_at", { ascending: true });
-  return (data as Question[]) ?? [];
+  const rows = await db
+    .select()
+    .from(questionBank)
+    .where(
+      and(eq(questionBank.team_id, teamId), eq(questionBank.is_active, true))
+    )
+    .orderBy(asc(questionBank.created_at));
+  return rows as Question[];
 }
 
 export async function getDefaultQuestionSet(teamId: string) {
-  const { data: qs } = await supabase
-    .from("question_set")
-    .select("*")
-    .eq("team_id", teamId)
-    .eq("is_default", true)
-    .single();
+  const [qs] = await db
+    .select()
+    .from(questionSet)
+    .where(
+      and(eq(questionSet.team_id, teamId), eq(questionSet.is_default, true))
+    )
+    .limit(1);
   if (!qs) return null;
 
-  const { data: rawItems } = await supabase
-    .from("question_set_item")
-    .select("*, question:question_bank(*)")
-    .eq("question_set_id", qs.id)
-    .order("position", { ascending: true });
-
-  const items = (rawItems ?? []).map(
-    (item: QuestionSetItem & { question: Question | null }) => ({
-      id: item.id,
-      question_set_id: item.question_set_id,
-      question_id: item.question_id,
-      position: item.position,
-      kind: item.kind,
-      question: item.question ?? undefined,
+  const rawItems = await db
+    .select({
+      id: questionSetItem.id,
+      question_set_id: questionSetItem.question_set_id,
+      question_id: questionSetItem.question_id,
+      position: questionSetItem.position,
+      kind: questionSetItem.kind,
+      question: {
+        id: questionBank.id,
+        team_id: questionBank.team_id,
+        text: questionBank.text,
+        category: questionBank.category,
+        is_active: questionBank.is_active,
+        created_at: questionBank.created_at,
+      },
     })
-  );
+    .from(questionSetItem)
+    .leftJoin(questionBank, eq(questionSetItem.question_id, questionBank.id))
+    .where(eq(questionSetItem.question_set_id, qs.id))
+    .orderBy(asc(questionSetItem.position));
+
+  const items = rawItems.map((item) => ({
+    id: item.id,
+    question_set_id: item.question_set_id,
+    question_id: item.question_id,
+    position: item.position,
+    kind: item.kind as "fixed" | "rotating_pool",
+    question: item.question ?? undefined,
+  }));
 
   return { ...qs, items } as {
     id: string;
@@ -413,14 +439,12 @@ export async function addQuestion(
   text: string,
   category: string
 ): Promise<Question> {
-  const { data, error } = await supabase
-    .from("question_bank")
-    .insert({ team_id: teamId, text, category, is_active: true })
-    .select()
-    .single();
-  if (error || !data)
-    throw new Error(error?.message ?? "Failed to add question");
-  return data as Question;
+  const [row] = await db
+    .insert(questionBank)
+    .values({ team_id: teamId, text, category, is_active: true })
+    .returning();
+  if (!row) throw new Error("Failed to add question");
+  return row as Question;
 }
 
 export async function addQuestionToSet(
@@ -429,142 +453,158 @@ export async function addQuestionToSet(
   position: number,
   kind: "fixed" | "rotating_pool"
 ): Promise<boolean> {
-  const { error } = await supabase.from("question_set_item").insert({
-    question_set_id: questionSetId,
-    question_id: questionId,
-    position,
-    kind,
-  });
-  return !error;
+  try {
+    await db.insert(questionSetItem).values({
+      question_set_id: questionSetId,
+      question_id: questionId,
+      position,
+      kind,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function removeQuestionFromSet(itemId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from("question_set_item")
-    .delete()
-    .eq("id", itemId);
-  return !error;
+  try {
+    await db
+      .delete(questionSetItem)
+      .where(eq(questionSetItem.id, itemId));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function moveQuestionInSet(
   itemId: string,
   newKind: "fixed" | "rotating_pool"
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from("question_set_item")
-    .update({ kind: newKind })
-    .eq("id", itemId);
-  return !error;
+  try {
+    await db
+      .update(questionSetItem)
+      .set({ kind: newKind })
+      .where(eq(questionSetItem.id, itemId));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function deactivateQuestion(questionId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from("question_bank")
-    .update({ is_active: false })
-    .eq("id", questionId);
-  return !error;
+  try {
+    await db
+      .update(questionBank)
+      .set({ is_active: false })
+      .where(eq(questionBank.id, questionId));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Rounds ─────────────────────────────────────────────────────────
 
 export async function getRounds(teamId: string): Promise<Round[]> {
-  const { data } = await supabase
-    .from("rounds")
-    .select("*")
-    .eq("team_id", teamId)
-    .order("created_at", { ascending: false });
-  return (data as Round[]) ?? [];
+  const rows = await db
+    .select()
+    .from(rounds)
+    .where(eq(rounds.team_id, teamId))
+    .orderBy(desc(rounds.created_at));
+  return rows as Round[];
 }
 
 export async function getRoundByToken(token: string): Promise<Round | null> {
-  const { data } = await supabase
-    .from("rounds")
-    .select("*")
-    .eq("token", token)
-    .single();
-  return (data as Round) ?? null;
+  const [row] = await db
+    .select()
+    .from(rounds)
+    .where(eq(rounds.token, token))
+    .limit(1);
+  return (row as Round) ?? null;
 }
 
 export async function getRoundById(roundId: string): Promise<Round | null> {
-  const { data } = await supabase
-    .from("rounds")
-    .select("*")
-    .eq("id", roundId)
-    .single();
-  return (data as Round) ?? null;
+  const [row] = await db
+    .select()
+    .from(rounds)
+    .where(eq(rounds.id, roundId))
+    .limit(1);
+  return (row as Round) ?? null;
 }
 
 export async function getRoundQuestions(
   roundId: string
 ): Promise<(RoundQuestion & { question_text: string })[]> {
-  const { data } = await supabase
-    .from("round_questions")
-    .select("*, question:question_bank(text)")
-    .eq("round_id", roundId)
-    .order("position", { ascending: true });
-
-  return (data ?? []).map(
-    (rq: RoundQuestion & { question: { text: string } | null }) => ({
-      id: rq.id,
-      round_id: rq.round_id,
-      question_id: rq.question_id,
-      kind: rq.kind,
-      position: rq.position,
-      question_text: rq.question?.text ?? "",
+  const rows = await db
+    .select({
+      id: roundQuestions.id,
+      round_id: roundQuestions.round_id,
+      question_id: roundQuestions.question_id,
+      kind: roundQuestions.kind,
+      position: roundQuestions.position,
+      question_text: questionBank.text,
     })
-  );
+    .from(roundQuestions)
+    .leftJoin(questionBank, eq(roundQuestions.question_id, questionBank.id))
+    .where(eq(roundQuestions.round_id, roundId))
+    .orderBy(asc(roundQuestions.position));
+
+  return rows.map((rq) => ({
+    id: rq.id,
+    round_id: rq.round_id,
+    question_id: rq.question_id,
+    kind: rq.kind as "fixed" | "rotating",
+    position: rq.position,
+    question_text: rq.question_text ?? "",
+  }));
 }
 
 export async function createRound(teamId: string): Promise<Round | null> {
   // 1. Get default question set
-  const { data: qSet } = await supabase
-    .from("question_set")
-    .select("id")
-    .eq("team_id", teamId)
-    .eq("is_default", true)
-    .single();
+  const [qSet] = await db
+    .select({ id: questionSet.id })
+    .from(questionSet)
+    .where(
+      and(eq(questionSet.team_id, teamId), eq(questionSet.is_default, true))
+    )
+    .limit(1);
   if (!qSet) return null;
 
-  const { data: setItems } = await supabase
-    .from("question_set_item")
-    .select("*")
-    .eq("question_set_id", qSet.id)
-    .order("position", { ascending: true });
-  if (!setItems) return null;
+  const setItems = await db
+    .select()
+    .from(questionSetItem)
+    .where(eq(questionSetItem.question_set_id, qSet.id))
+    .orderBy(asc(questionSetItem.position));
+  if (!setItems.length) return null;
 
-  const fixedItems = setItems.filter(
-    (i: QuestionSetItem) => i.kind === "fixed"
-  );
-  const rotatingPool = setItems.filter(
-    (i: QuestionSetItem) => i.kind === "rotating_pool"
-  );
+  const fixedItems = setItems.filter((i) => i.kind === "fixed");
+  const rotatingPool = setItems.filter((i) => i.kind === "rotating_pool");
 
   // 2. Pick rotating question (avoid recently used)
   let rotatingPick = rotatingPool[0] ?? null;
   if (rotatingPool.length > 0) {
-    const { data: pastRounds } = await supabase
-      .from("rounds")
-      .select("id")
-      .eq("team_id", teamId)
-      .order("created_at", { ascending: false })
+    const pastRounds = await db
+      .select({ id: rounds.id })
+      .from(rounds)
+      .where(eq(rounds.team_id, teamId))
+      .orderBy(desc(rounds.created_at))
       .limit(rotatingPool.length);
 
-    if (pastRounds && pastRounds.length > 0) {
-      const roundIds = pastRounds.map((r: { id: string }) => r.id);
-      const { data: usedRqs } = await supabase
-        .from("round_questions")
-        .select("question_id")
-        .in("round_id", roundIds)
-        .eq("kind", "rotating");
+    if (pastRounds.length > 0) {
+      const roundIds = pastRounds.map((r) => r.id);
+      const usedRqs = await db
+        .select({ question_id: roundQuestions.question_id })
+        .from(roundQuestions)
+        .where(
+          and(
+            inArray(roundQuestions.round_id, roundIds),
+            eq(roundQuestions.kind, "rotating")
+          )
+        );
 
-      const usedIds = new Set(
-        (usedRqs ?? []).map(
-          (rq: { question_id: string }) => rq.question_id
-        )
-      );
-      const unused = rotatingPool.find(
-        (i: QuestionSetItem) => !usedIds.has(i.question_id)
-      );
+      const usedIds = new Set(usedRqs.map((rq) => rq.question_id));
+      const unused = rotatingPool.find((i) => !usedIds.has(i.question_id));
       if (unused) rotatingPick = unused;
     }
   }
@@ -574,21 +614,25 @@ export async function createRound(teamId: string): Promise<Round | null> {
   const roundScaleMax = settings?.scale_max ?? 3;
   const token = uid().slice(0, 12);
 
-  const { data: round, error: roundErr } = await supabase
-    .from("rounds")
-    .insert({
+  const [round] = await db
+    .insert(rounds)
+    .values({
       team_id: teamId,
       question_set_id: qSet.id,
       token,
       status: "open",
       scale_max: roundScaleMax,
     })
-    .select()
-    .single();
-  if (roundErr || !round) return null;
+    .returning();
+  if (!round) return null;
 
   // 4. Insert round_questions
-  const rqRows = fixedItems.map((item: QuestionSetItem, idx: number) => ({
+  const rqRows: {
+    round_id: string;
+    question_id: string;
+    kind: string;
+    position: number;
+  }[] = fixedItems.map((item, idx) => ({
     round_id: round.id,
     question_id: item.question_id,
     kind: "fixed",
@@ -604,17 +648,21 @@ export async function createRound(teamId: string): Promise<Round | null> {
     });
   }
 
-  await supabase.from("round_questions").insert(rqRows);
+  await db.insert(roundQuestions).values(rqRows);
 
   return round as Round;
 }
 
 export async function closeRound(roundId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from("rounds")
-    .update({ status: "closed", closes_at: new Date().toISOString() })
-    .eq("id", roundId);
-  return !error;
+  try {
+    await db
+      .update(rounds)
+      .set({ status: "closed", closes_at: new Date().toISOString() })
+      .where(eq(rounds.id, roundId));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Submissions ────────────────────────────────────────────────────
@@ -626,16 +674,11 @@ export async function submitResponses(
   clientHash?: string
 ) {
   // 1. Insert submission
-  const { data: sub, error: subErr } = await supabase
-    .from("submissions")
-    .insert({
-      round_id: roundId,
-      client_hash: clientHash ?? null,
-    })
-    .select()
-    .single();
-  if (subErr || !sub)
-    throw new Error(subErr?.message ?? "Failed to create submission");
+  const [sub] = await db
+    .insert(submissions)
+    .values({ round_id: roundId, client_hash: clientHash ?? null })
+    .returning();
+  if (!sub) throw new Error("Failed to create submission");
 
   // 2. Insert answers
   const answerRows = answersData.map((a) => ({
@@ -643,11 +686,11 @@ export async function submitResponses(
     round_question_id: a.round_question_id,
     value: a.value,
   }));
-  await supabase.from("answers").insert(answerRows);
+  await db.insert(answers).values(answerRows);
 
   // 3. Insert free text if provided
   if (freeText && freeText.trim()) {
-    await supabase.from("free_text").insert({
+    await db.insert(freeTextTable).values({
       submission_id: sub.id,
       text: freeText.trim(),
     });
@@ -657,11 +700,11 @@ export async function submitResponses(
 }
 
 export async function getSubmissionCount(roundId: string): Promise<number> {
-  const { count } = await supabase
-    .from("submissions")
-    .select("*", { count: "exact", head: true })
-    .eq("round_id", roundId);
-  return count ?? 0;
+  const [{ value }] = await db
+    .select({ value: count() })
+    .from(submissions)
+    .where(eq(submissions.round_id, roundId));
+  return value;
 }
 
 // ─── Dashboard Aggregates ───────────────────────────────────────────
@@ -670,49 +713,46 @@ export async function getDashboardData(
   teamId: string,
   limit = 8
 ): Promise<QuestionAggregate[]> {
-  // Get last N closed rounds
-  const { data: closedRounds } = await supabase
-    .from("rounds")
-    .select("*")
-    .eq("team_id", teamId)
-    .eq("status", "closed")
-    .order("created_at", { ascending: false })
+  const closedRounds = await db
+    .select()
+    .from(rounds)
+    .where(and(eq(rounds.team_id, teamId), eq(rounds.status, "closed")))
+    .orderBy(desc(rounds.created_at))
     .limit(limit);
 
-  if (!closedRounds || closedRounds.length === 0) return [];
+  if (!closedRounds.length) return [];
 
   const results: QuestionAggregate[] = [];
 
   for (const round of closedRounds) {
-    // Get round questions with question text
-    const { data: rqs } = await supabase
-      .from("round_questions")
-      .select("*, question:question_bank(text)")
-      .eq("round_id", round.id)
-      .order("position", { ascending: true });
-
-    if (!rqs) continue;
+    const rqs = await db
+      .select({
+        id: roundQuestions.id,
+        round_id: roundQuestions.round_id,
+        question_id: roundQuestions.question_id,
+        kind: roundQuestions.kind,
+        position: roundQuestions.position,
+        question_text: questionBank.text,
+      })
+      .from(roundQuestions)
+      .leftJoin(questionBank, eq(roundQuestions.question_id, questionBank.id))
+      .where(eq(roundQuestions.round_id, round.id))
+      .orderBy(asc(roundQuestions.position));
 
     for (const rq of rqs) {
-      // Get all answer values for this round_question
-      const { data: answerRows } = await supabase
-        .from("answers")
-        .select("value")
-        .eq("round_question_id", rq.id);
+      const answerRows = await db
+        .select({ value: answers.value })
+        .from(answers)
+        .where(eq(answers.round_question_id, rq.id));
 
-      const values = (answerRows ?? []).map(
-        (a: { value: number }) => a.value
-      );
+      const values = answerRows.map((a) => a.value);
       if (values.length === 0) continue;
 
       const { avg, spread } = calcStats(values);
-      const questionText =
-        (rq as RoundQuestion & { question: { text: string } | null })
-          .question?.text ?? "";
 
       results.push({
         question_id: rq.question_id,
-        question_text: questionText,
+        question_text: rq.question_text ?? "",
         round_id: round.id,
         round_created_at: round.created_at,
         scale_max: round.scale_max ?? 3,
@@ -733,35 +773,36 @@ export async function getRoundAggregates(
   const round = await getRoundById(roundId);
   if (!round) return [];
 
-  const { data: rqs } = await supabase
-    .from("round_questions")
-    .select("*, question:question_bank(text)")
-    .eq("round_id", roundId)
-    .order("position", { ascending: true });
-
-  if (!rqs) return [];
+  const rqs = await db
+    .select({
+      id: roundQuestions.id,
+      round_id: roundQuestions.round_id,
+      question_id: roundQuestions.question_id,
+      kind: roundQuestions.kind,
+      position: roundQuestions.position,
+      question_text: questionBank.text,
+    })
+    .from(roundQuestions)
+    .leftJoin(questionBank, eq(roundQuestions.question_id, questionBank.id))
+    .where(eq(roundQuestions.round_id, roundId))
+    .orderBy(asc(roundQuestions.position));
 
   const results: QuestionAggregate[] = [];
 
   for (const rq of rqs) {
-    const { data: answerRows } = await supabase
-      .from("answers")
-      .select("value")
-      .eq("round_question_id", rq.id);
+    const answerRows = await db
+      .select({ value: answers.value })
+      .from(answers)
+      .where(eq(answers.round_question_id, rq.id));
 
-    const values = (answerRows ?? []).map(
-      (a: { value: number }) => a.value
-    );
+    const values = answerRows.map((a) => a.value);
     if (values.length === 0) continue;
 
     const { avg, spread } = calcStats(values);
-    const questionText =
-      (rq as RoundQuestion & { question: { text: string } | null })
-        .question?.text ?? "";
 
     results.push({
       question_id: rq.question_id,
-      question_text: questionText,
+      question_text: rq.question_text ?? "",
       round_id: roundId,
       round_created_at: round.created_at,
       scale_max: round.scale_max ?? 3,
@@ -781,85 +822,76 @@ export async function getPreviousRound(
   const round = await getRoundById(roundId);
   if (!round) return null;
 
-  const { data } = await supabase
-    .from("rounds")
-    .select("id")
-    .eq("team_id", round.team_id)
-    .eq("status", "closed")
-    .lt("created_at", round.created_at)
-    .order("created_at", { ascending: false })
+  const [prev] = await db
+    .select({ id: rounds.id })
+    .from(rounds)
+    .where(
+      and(
+        eq(rounds.team_id, round.team_id),
+        eq(rounds.status, "closed"),
+        lt(rounds.created_at, round.created_at)
+      )
+    )
+    .orderBy(desc(rounds.created_at))
     .limit(1);
 
-  return data?.[0]?.id ?? null;
+  return prev?.id ?? null;
 }
 
 export async function getFreeTexts(roundId: string) {
-  // Get submission IDs for this round
-  const { data: subs } = await supabase
-    .from("submissions")
-    .select("id")
-    .eq("round_id", roundId);
-  if (!subs || subs.length === 0) return [];
+  const subs = await db
+    .select({ id: submissions.id })
+    .from(submissions)
+    .where(eq(submissions.round_id, roundId));
+  if (!subs.length) return [];
 
-  const subIds = subs.map((s: { id: string }) => s.id);
+  const subIds = subs.map((s) => s.id);
 
-  const { data } = await supabase
-    .from("free_text")
-    .select("text, created_at")
-    .in("submission_id", subIds);
+  const rows = await db
+    .select({ text: freeTextTable.text, created_at: freeTextTable.created_at })
+    .from(freeTextTable)
+    .where(inArray(freeTextTable.submission_id, subIds));
 
-  return (data ?? []).map((ft: { text: string; created_at: string }) => ({
-    text: ft.text,
-    created_at: ft.created_at,
-  }));
+  return rows.map((ft) => ({ text: ft.text, created_at: ft.created_at }));
 }
 
 export async function getAllFreeTexts(teamId: string) {
-  // Get all closed rounds for this team
-  const { data: teamRounds } = await supabase
-    .from("rounds")
-    .select("id, created_at")
-    .eq("team_id", teamId)
-    .eq("status", "closed")
-    .order("created_at", { ascending: false });
+  const teamRounds = await db
+    .select({ id: rounds.id, created_at: rounds.created_at })
+    .from(rounds)
+    .where(and(eq(rounds.team_id, teamId), eq(rounds.status, "closed")))
+    .orderBy(desc(rounds.created_at));
 
-  if (!teamRounds || teamRounds.length === 0) return [];
+  if (!teamRounds.length) return [];
 
-  const roundIds = teamRounds.map((r: { id: string }) => r.id);
-  const roundDateMap = new Map(
-    teamRounds.map((r: { id: string; created_at: string }) => [
-      r.id,
-      r.created_at,
-    ])
-  );
+  const roundIds = teamRounds.map((r) => r.id);
+  const roundDateMap = new Map(teamRounds.map((r) => [r.id, r.created_at]));
 
-  // Get all submissions for these rounds
-  const { data: subs } = await supabase
-    .from("submissions")
-    .select("id, round_id")
-    .in("round_id", roundIds);
-  if (!subs || subs.length === 0) return [];
+  const subs = await db
+    .select({ id: submissions.id, round_id: submissions.round_id })
+    .from(submissions)
+    .where(inArray(submissions.round_id, roundIds));
+  if (!subs.length) return [];
 
-  const subIds = subs.map((s: { id: string }) => s.id);
-  const subRoundMap = new Map(
-    subs.map((s: { id: string; round_id: string }) => [s.id, s.round_id])
-  );
+  const subIds = subs.map((s) => s.id);
+  const subRoundMap = new Map(subs.map((s) => [s.id, s.round_id]));
 
-  // Get all free texts
-  const { data: texts } = await supabase
-    .from("free_text")
-    .select("text, created_at, submission_id")
-    .in("submission_id", subIds)
-    .order("created_at", { ascending: false });
+  const texts = await db
+    .select({
+      text: freeTextTable.text,
+      created_at: freeTextTable.created_at,
+      submission_id: freeTextTable.submission_id,
+    })
+    .from(freeTextTable)
+    .where(inArray(freeTextTable.submission_id, subIds))
+    .orderBy(desc(freeTextTable.created_at));
 
-  return (texts ?? []).map(
-    (ft: { text: string; created_at: string; submission_id: string }) => {
-      const roundId = subRoundMap.get(ft.submission_id) ?? "";
-      return {
-        text: ft.text,
-        created_at: ft.created_at,
-        round_date: roundDateMap.get(roundId) ?? "",
-      };
-    }
-  );
+  return texts.map((ft) => {
+    const roundId = subRoundMap.get(ft.submission_id) ?? "";
+    return {
+      text: ft.text,
+      created_at: ft.created_at,
+      round_date: roundDateMap.get(roundId) ?? "",
+    };
+  });
 }
