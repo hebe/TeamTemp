@@ -6,8 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
+    "db:push": "npx drizzle-kit push",
+    "db:studio": "npx drizzle-kit studio",
     "lint": "eslint"
   },
   "dependencies": {
